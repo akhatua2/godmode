@@ -73,11 +73,60 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
             <div className="tool-terminal-container"> 
                 {/* Optional: Add a header/title bar if desired */}
                 {/* <div className="tool-terminal-header"></div> */}
+                
+                {/* Display based on tool type */} 
+                {toolCalls[0].function.name === 'run_bash_command' && (
+                    <div className="tool-terminal-content">
+                        <pre className="tool-terminal-command">
+                            <code>{JSON.parse(toolCalls[0].function.arguments).command}</code>
+                        </pre>
+                    </div>
+                )}
+                {toolCalls[0].function.name === 'read_file' && (
+                     <div className="tool-terminal-content">
+                        <p className="tool-file-op-label">Read File:</p>
+                        <pre className="tool-terminal-command tool-file-path">
+                            <code>{JSON.parse(toolCalls[0].function.arguments).file_path}</code>
+                        </pre>
+                    </div>
+                )}
+                {toolCalls[0].function.name === 'edit_file' && (() => {
+                    const args = JSON.parse(toolCalls[0].function.arguments);
+                    const stringToReplace = args.string_to_replace;
+                    const newString = args.new_string;
+                    // Truncate for display if needed
+                    const replaceToShow = stringToReplace.length > 100 ? stringToReplace.substring(0, 100) + '...' : stringToReplace;
+                    const newToShow = newString.length > 100 ? newString.substring(0, 100) + '...' : newString;
+
+                    return (
+                        <div className="tool-terminal-content">
+                            <p className="tool-file-op-label">Edit File:</p>
+                            <div className="git-diff-line git-diff-removed"> {/* Wrapper for filename */} 
+                                <pre className="tool-terminal-command git-diff-filename">
+                                    {/* Display filename without diff style */}
+                                    <code>{args.file_path}</code>
+                                </pre>
+                            </div>
+                            <p className="tool-file-op-label">Replace:</p>
+                            <div className="git-diff-line git-diff-removed">
+                                <pre className="tool-terminal-command git-diff-content">
+                                    {/* Show the string to be replaced */}
+                                    <code><span className="git-diff-prefix">-</span> {replaceToShow}</code>
+                                </pre>
+                            </div>
+                            <p className="tool-file-op-label">With:</p>
+                            <div className="git-diff-line git-diff-added"> {/* Wrapper for content */} 
+                                <pre className="tool-terminal-command git-diff-content">
+                                    {/* Show the new string */}
+                                    <code><span className="git-diff-prefix">+</span> {newToShow}</code>
+                                </pre>
+                            </div>
+                        </div>
+                    );
+                })()}
+
                 <div className="tool-terminal-content">
                   {/* <p className="tool-terminal-prompt">Assistant wants to run:</p> */}
-                  <pre className="tool-terminal-command">
-                    <code>{JSON.parse(toolCalls[0].function.arguments).command}</code>
-                  </pre>
                 </div>
                 {/* Only show buttons if it has NOT been responded to */} 
                 {!isResponded && (

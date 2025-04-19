@@ -8,6 +8,9 @@ from openai import AsyncOpenAI
 # Import only ChatAgent, ToolCallRequest is no longer needed
 from agent import ChatAgent 
 from typing import List, Dict, Any
+# --- Import Server Tool Registry --- 
+from tools import SERVER_EXECUTABLE_TOOLS
+# --- End Import --- 
 
 # Load environment variables from .env file
 load_dotenv()
@@ -45,31 +48,65 @@ async def run_agent_step_and_send(agent: ChatAgent, websocket: WebSocket):
                     first_tool_call = tool_calls[0] # Expecting only one due to parallel_tool_calls=False
                     first_tool_name = first_tool_call.get("function", {}).get("name")
                     tool_call_id = first_tool_call.get("id")
+                    arguments = first_tool_call.get("function", {}).get("arguments", "{}") # Get arguments string
                     
-                    if first_tool_name == "run_bash_command":
+                    # --- Check if it's a Server-Side Tool --- 
+                    if first_tool_name in SERVER_EXECUTABLE_TOOLS:
+                        print(f"[WebSocket] Executing server-side tool: {first_tool_name}")
+                        server_function = SERVER_EXECUTABLE_TOOLS[first_tool_name]
+                        try:
+                            # Parse arguments
+                            parsed_args = json.loads(arguments)
+                            # Execute the tool function
+                            result_content = await server_function(**parsed_args)
+                            # Add result to memory
+                            agent.add_message_to_memory(role="tool", 
+                                                      tool_call_id=tool_call_id, 
+                                                      content=result_content)
+                            # Trigger the next agent step immediately
+                            print("[WebSocket] Triggering agent step after server tool execution...")
+                            await run_agent_step_and_send(agent, websocket)
+                            # Since the helper handles the next step, we mark this stream as ended conceptually
+                            stream_ended = True 
+                            return False # Indicate the flow continues in the recursive call
+                        except json.JSONDecodeError:
+                            print(f"[WebSocket Error] Failed to parse arguments for {first_tool_name}: {arguments}")
+                            agent.add_message_to_memory(role="tool", tool_call_id=tool_call_id, content=f"Error: Invalid arguments provided for {first_tool_name}.")
+                            await run_agent_step_and_send(agent, websocket) # Let agent handle the error
+                            stream_ended = True
+                            return False
+                        except Exception as tool_exec_error:
+                            print(f"[WebSocket Error] Error executing server tool {first_tool_name}: {tool_exec_error}")
+                            traceback.print_exc()
+                            agent.add_message_to_memory(role="tool", tool_call_id=tool_call_id, content=f"Error executing tool {first_tool_name}: {tool_exec_error}")
+                            await run_agent_step_and_send(agent, websocket) # Let agent handle the error
+                            stream_ended = True
+                            return False
+                    # --- End Server-Side Tool Check --- 
+                    
+                    # --- Client-Side and Flow Tools --- 
+                    elif first_tool_name in ["run_bash_command", "read_file", "edit_file"]:
                         print(f"WebSocket sending tool_call_request for: {first_tool_name}")
-                        await websocket.send_text(json.dumps(first_tool_call))
-                        # Stop this stream, wait for tool_result from client
-                        stream_ended = True # Mark as ended (waiting for tool result)
-                        return False # Indicate agent is waiting for tool result
+                        # Send the specific tool call object, not the whole result dict
+                        await websocket.send_text(json.dumps({"type": "tool_call_request", "tool_calls": [first_tool_call]}))
+                        stream_ended = True 
+                        return False 
                     elif first_tool_name == "ask_user":
-                        # --- Store the ID before sending to client --- 
                         if tool_call_id:
                             agent.pending_ask_user_tool_call_id = tool_call_id
                             print(f"[WebSocket] Stored pending ask_user ID: {tool_call_id}")
                         else: 
                              print("[WebSocket WARNING] ask_user tool call missing ID!")
-                             
-                        question = json.loads(first_tool_call["function"]["arguments"]).get("question", "")
+                        question = json.loads(arguments).get("question", "")
                         print(f"WebSocket sending ask_user_request: {question[:50]}...")
                         await websocket.send_text(json.dumps({"type": "ask_user_request", "question": question}))
-                        stream_ended = True # End stream, agent waiting for next user message
+                        stream_ended = True 
                         break
                     elif first_tool_name == "terminate":
-                        reason = json.loads(first_tool_call["function"]["arguments"]).get("reason", "Task finished.")
+                        reason = json.loads(arguments).get("reason", "Task finished.")
                         print(f"WebSocket sending terminate_request: {reason}")
                         await websocket.send_text(json.dumps({"type": "terminate_request", "reason": reason}))
-                        stream_ended = True # End stream, task is finished
+                        stream_ended = True 
                         break
                     else:
                         # Unknown tool requested?

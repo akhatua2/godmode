@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
+import './ChatInput.css'; // Import the CSS
 
 // Updated Props
 interface ChatInputProps {
@@ -14,8 +15,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   onInputChange 
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  // State for the screenshot checkbox
-  const [includeScreenshot, setIncludeScreenshot] = useState(true); 
+  // State for the screenshot toggle, default to false
+  const [includeScreenshot, setIncludeScreenshot] = useState(false); 
 
   const adjustTextareaHeight = () => {
     const textarea = textareaRef.current;
@@ -53,39 +54,35 @@ export const ChatInput: React.FC<ChatInputProps> = ({
 
   return (
     <form onSubmit={handleSubmit} className="p-2 border-gray-200">
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-        {/* Textarea Container */}
-        <div className="relative">
-          <textarea
-            ref={textareaRef}
-            value={inputValue}
-            onChange={(e) => {
-              onInputChange(e);
-              requestAnimationFrame(adjustTextareaHeight);
-            }}
-            onKeyDown={handleKeyDown}
-            placeholder="Type a message..."
-            disabled={isProcessing}
-            rows={1}
-            className="w-full px-2 pt-0.5 pb-0.5 text-xs text-gray-700 bg-transparent border-none focus:outline-none focus:ring-0 resize-none min-h-[44px] scrollbar-none relative"
-          />
-        </div>
+      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden p-2 chat-input-container">
+        {/* New Add Context Button */}
+        <button
+          type="button" // Prevent form submission
+          onClick={() => setIncludeScreenshot(!includeScreenshot)}
+          disabled={isProcessing}
+          className={`add-context-button ${includeScreenshot ? 'active' : ''}`}
+          title={includeScreenshot ? 'Remove screenshot context' : 'Add screenshot context'}
+        >
+          {/* Styled '@' symbol */}
+          <span>@</span> 
+          Add screenshot
+        </button>
 
-        {/* Bottom bar with checkbox */}
-        <div className="flex items-center justify-end px-2 py-1.5 border-t border-gray-100 text-xs">
-          <label htmlFor="screenshot-checkbox" className="flex items-center cursor-pointer">
-            <input 
-              type="checkbox" 
-              id="screenshot-checkbox"
-              checked={includeScreenshot}
-              onChange={(e) => setIncludeScreenshot(e.target.checked)}
-              className="mr-1"
-              disabled={isProcessing}
-            />
-            <span style={{ color: '#ccc' }}>Send Screenshot Context</span>
-          </label>
-          {/* Submit button could go here if needed, but Enter key works */}
-        </div>
+        {/* Textarea Container - Removed old camera button */}
+        <textarea
+          ref={textareaRef}
+          value={inputValue}
+          onChange={(e) => {
+            onInputChange(e);
+            requestAnimationFrame(adjustTextareaHeight);
+          }}
+          onKeyDown={handleKeyDown}
+          placeholder="Type a message..."
+          disabled={isProcessing}
+          rows={1}
+          className="chat-input-textarea" // Use class from CSS (padding handled by CSS)
+        />
+        {/* Removed the bottom bar with checkbox */}
       </div>
     </form>
   );

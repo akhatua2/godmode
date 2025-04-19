@@ -1,4 +1,8 @@
 fastapi>=0.100.0
 uvicorn[standard]>=0.20.0
 python-dotenv>=1.0.0 # For managing API keys
-openai>=1.0.0 # Add OpenAI library 
+openai>=1.0.0 # Add OpenAI library
+websockets
+requests
+beautifulsoup4 
+tavily-python 

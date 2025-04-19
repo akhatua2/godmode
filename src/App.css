@@ -51,8 +51,8 @@
 /* Style for user messages */
 .message-user {
   text-align: right;
-  font-size: 0.85rem; /* Make user text slightly smaller */
-  color: #ccc; /* Make user text slightly dimmer */
+  font-size: 0.7rem; /* Make user text slightly smaller */
+  color: #cccccc84; /* Make user text slightly dimmer */
 }
 
 /* Style for bot messages (default alignment is left) */
@@ -138,7 +138,6 @@
   border: 1px solid rgba(180, 180, 180, 0.5); 
   border-radius: 0.5rem; 
   overflow: hidden;
-  padding-top: 0.5rem; /* Add padding above textarea */
 }
 
 /* Textarea - w-full px-2 pt-0.5 pb-0.5 text-xs text-gray-700 bg-transparent border-none focus:outline-none focus:ring-0 resize-none min-h-[44px] scrollbar-none relative */
@@ -258,12 +257,11 @@
 /* === NEW Terminal Style Tool Request Rules === */
 
 .message-tool-request .tool-terminal-container {
-  /* Remove specific background and border */
-  /* background-color: #282c34; */
-  /* border: 1px solid #404652; */
-  border-radius: 6px; /* Keep slight rounding */
-  padding: 8px; /* Reduce padding slightly */
-  color: #abb2bf; /* Keep text color */
+  background-color: #1e1e1e; /* Very dark background */
+  /* border: 1px solid #404652; */ /* Remove border */
+  border-radius: 4px; /* Slight rounding */
+  padding: 6px 10px; /* Adjusted padding */
+  /* color: #ccc; */ /* Remove default text color, let children define */
   font-family: 'Courier New', Courier, monospace; /* Keep font */
   position: relative; /* Needed for buttons */
   margin: 4px 0;
@@ -291,16 +289,24 @@
 .tool-terminal-command {
   /* Remove specific background */
   /* background-color: #1e2127; */
-  padding: 4px 0; /* Minimal padding */
+  padding: 0; /* Remove padding from pre */
+  margin: 0; /* Remove margin from pre */
   border-radius: 0; /* No rounding for command block */
   overflow-x: auto; 
-  font-size: 0.85em;
-  margin: 0;
+  font-size: 0.8em;
 }
 
 .tool-terminal-command code {
-  color: #98c379; /* Keep command text color */
+  color: #FFCA28; /* Yellow/Orange color for command text */
   white-space: pre-wrap; 
+  font-family: 'Menlo', 'Consolas', 'Liberation Mono', monospace; /* Monospace font */
+}
+
+/* Add icon before the command */
+.tool-terminal-command code::before {
+    content: '[>_]\00a0'; /* Terminal-like icon and non-breaking space */
+    color: #ccc; /* Icon color */
+    margin-right: 4px; /* Space after icon */
 }
 
 .tool-terminal-buttons {
@@ -365,12 +371,12 @@
 }
 
 .command-output-text {
-  background-color: rgba(50, 50, 50, 0.4); /* Faint dark background */
-  padding: 8px 12px;
-  border-radius: 4px;
-  color: #ccc; /* Dimmer text color */
-  font-family: 'Courier New', Courier, monospace;
-  font-size: 0.75em; /* Smaller font for output */
+  background-color: #1e1e1e; /* Very dark background */
+  padding: 6px 10px; /* Match padding */
+  border-radius: 4px; /* Match rounding */
+  color: #FFCA28; /* Yellow/Orange text color for output */
+  font-family: 'Menlo', 'Consolas', 'Liberation Mono', monospace; /* Monospace font */
+  font-size: 0.8em; /* Match command font size */
   white-space: pre-wrap; /* Wrap long lines */
   word-wrap: break-word;
   margin: 0; /* Remove default pre margin */

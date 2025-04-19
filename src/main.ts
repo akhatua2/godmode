@@ -5,6 +5,7 @@ import WebSocket from 'ws';
 // Import child_process for command execution (we'll use it later)
 import { exec } from 'node:child_process';
 import type { ToolCall } from './types'; // Import ToolCall type for storage
+import { executeTool } from './tool-executor'; // Import the executor function
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -162,26 +163,6 @@ function connectWebSocket() {
   });
 }
 
-// --- Send Tool Result back to Backend --- 
-function sendToolResultToBackend(toolCallId: string, content: string) {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        const resultPayload = {
-            type: 'tool_result',
-            results: [
-                { tool_call_id: toolCallId, content: content }
-            ]
-        };
-        console.log('[WebSocket Send] Sending tool_result:', resultPayload);
-        ws.send(JSON.stringify(resultPayload));
-    } else {
-        console.error('[WebSocket Send] Cannot send tool_result, WebSocket not connected.');
-        // Optionally inform the user in the UI
-        if (mainWindow) {
-            mainWindow.webContents.send('message-from-main', { text: '[Error: Cannot send command result to backend]', isUser: false });
-        }
-    }
-}
-
 const createWindow = () => {
   // Create the browser window.
   mainWindow = new BrowserWindow({
@@ -244,33 +225,50 @@ app.on('ready', () => {
     let screenshotDataUrl: string | null = null;
     // 2. Capture screenshot ONLY if requested
     if (includeScreenshot) {
-        try {
-          const primaryDisplay = screen.getPrimaryDisplay();
-          const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: primaryDisplay.size.width, height: primaryDisplay.size.height }});
-          const primarySource = sources.find(source => source.display_id === primaryDisplay.id.toString() || source.id.startsWith('screen:'));
+        // --- Hide window, capture, show window --- 
+        if (mainWindow) {
+            try {
+                mainWindow.hide();
+                // Wait a short moment for the window to actually hide
+                await new Promise(resolve => setTimeout(resolve, 50)); // Reduced delay
 
-          if (primarySource) {
-            const pngBuffer = primarySource.thumbnail.toPNG(); 
-            screenshotDataUrl = `data:image/png;base64,${pngBuffer.toString('base64')}`;
-            console.log('[IPC] Screenshot captured.');
-            // 3. Send screenshot image back to UI immediately
-            if (mainWindow) {
-                mainWindow.webContents.send('message-from-main', { text: screenshotDataUrl, isUser: false, isImage: true });
-            } else {
-                 console.warn("[IPC Handler] mainWindow became null before sending screenshot to UI.");
+                const primaryDisplay = screen.getPrimaryDisplay();
+                const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: primaryDisplay.size.width, height: primaryDisplay.size.height }});
+                const primarySource = sources.find(source => source.display_id === primaryDisplay.id.toString() || source.id.startsWith('screen:'));
+
+                if (primarySource) {
+                    const pngBuffer = primarySource.thumbnail.toPNG(); 
+                    screenshotDataUrl = `data:image/png;base64,${pngBuffer.toString('base64')}`;
+                    console.log('[IPC] Screenshot captured (window was hidden).');
+                    // Send screenshot back to UI immediately (optional to do it here)
+                    // mainWindow.webContents.send('message-from-main', { text: screenshotDataUrl, isUser: false, isImage: true });
+                } else {
+                    console.error('[IPC] Primary screen source not found for screenshot.');
+                    if (mainWindow) {
+                        mainWindow.webContents.send('message-from-main', { text: '[Screenshot failed: Source not found]', isUser: false });
+                    }
+                }
+            } catch (error) {
+                console.error('[IPC] Failed to capture screen:', error);
+                if (mainWindow) {
+                    mainWindow.webContents.send('message-from-main', { text: '[Screenshot failed]', isUser: false });
+                }
+            } finally {
+                // IMPORTANT: Ensure the window is shown again even if errors occurred
+                if(mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.show();
+                    console.log('[IPC] Window shown again.');
+                }
             }
-          } else {
-            console.error('[IPC] Primary screen source not found for screenshot.');
-            if (mainWindow) {
-                mainWindow.webContents.send('message-from-main', { text: '[Screenshot failed: Source not found]', isUser: false });
-            }
-          }
-        } catch (error) {
-          console.error('[IPC] Failed to capture screen:', error);
-          if (mainWindow) {
-             mainWindow.webContents.send('message-from-main', { text: '[Screenshot failed]', isUser: false });
-          }
+        } else {
+            console.error('[IPC] Cannot hide/show window for screenshot: mainWindow is null.');
         }
+         // --- End Hide/Capture/Show --- 
+        
+        // Send screenshot back to UI *after* showing window again (or keep sending inside try block)
+        if (mainWindow && screenshotDataUrl) {
+            mainWindow.webContents.send('message-from-main', { text: screenshotDataUrl, isUser: false, isImage: true });
+        } 
     }
 
     // 4. Send message data (with or without screenshot) to backend
@@ -310,67 +308,11 @@ app.on('ready', () => {
           return;
       }
       
-      // Remove the call from pending once handled
+      // Remove the call from pending once received
       pendingToolCalls.delete(toolCallId);
 
-      if (decision === 'approved') {
-          // Execute the command
-          let command = '';
-          try {
-              // IMPORTANT: Arguments are a JSON *string*. Parse it first.
-              const args = JSON.parse(pendingCall.function.arguments);
-              command = args.command; // Extract the actual command
-              if (!command || typeof command !== 'string') {
-                  throw new Error('Invalid command format in arguments.')
-              }
-              
-              console.log(`[Exec] Running command for ${toolCallId}: ${command}`);
-              exec(command, { timeout: 15000 }, (error, stdout, stderr) => { // Added timeout
-                  if (error) {
-                      console.error(`[Exec] Error executing command (${toolCallId}): ${error.message}`);
-                      const errorMessage = `Execution Error: ${error.message}${stderr ? `\nStderr: ${stderr}` : ''}`;
-                      // Send error result back to backend
-                      sendToolResultToBackend(toolCallId, errorMessage);
-                      // --- Send error result to frontend --- 
-                      if (mainWindow) {
-                          mainWindow.webContents.send('command-output-from-main', errorMessage);
-                      }
-                      // --- End send error to frontend ---
-                      return;
-                  }
-                  const output = stdout || stderr; // Send stdout or stderr if stdout is empty
-                  console.log(`[Exec] Command output (${toolCallId}): ${output.substring(0, 100)}...`);
-                  // Send successful execution result back to backend
-                  sendToolResultToBackend(toolCallId, output);
-                  // --- Send success result to frontend --- 
-                  if (mainWindow) {
-                      mainWindow.webContents.send('command-output-from-main', output);
-                  }
-                  // --- End send success to frontend ---
-              });
-
-          } catch (parseError) {
-              console.error(`[Exec] Error parsing arguments or invalid command for ${toolCallId}:`, parseError);
-              const parseErrorMessage = `Execution Failed: Invalid arguments or command format.`;
-              sendToolResultToBackend(toolCallId, parseErrorMessage);
-              // --- Send parse error to frontend --- 
-              if (mainWindow) {
-                  mainWindow.webContents.send('command-output-from-main', parseErrorMessage);
-              }
-              // --- End send parse error to frontend ---
-          }
-
-      } else {
-          // User denied execution
-          const denialMessage = "User denied execution.";
-          console.log(`[Exec] User denied execution for ${toolCallId}`);
-          sendToolResultToBackend(toolCallId, denialMessage);
-          // --- Send denial info to frontend --- 
-          if (mainWindow) {
-                mainWindow.webContents.send('command-output-from-main', denialMessage);
-          }
-          // --- End send denial to frontend ---
-      }
+      // Use the external executor function
+      executeTool(ws, mainWindow, pendingCall, decision);
   });
 });
 
