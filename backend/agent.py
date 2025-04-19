@@ -31,7 +31,7 @@ class ChatAgent:
     """A self-contained agent to manage chat history and interact with an LLM."""
 
     # Update type hint for client
-    def __init__(self, client: AsyncOpenAI, model_name: str = "gpt-4.1-mini"):
+    def __init__(self, client: AsyncOpenAI, model_name: str = "gpt-4.1"):
         self.client = client
         self.model_name = model_name
         self.memory: List[MessageDict] = [] # Initialize memory as a list of dictionaries
@@ -45,7 +45,8 @@ class ChatAgent:
             "- ask_user: Ask the user a clarifying question if you are unsure how to proceed or need more information.\n"
             "- terminate: End the current interaction or task when the goal is achieved, you are stuck, or the user asks to stop.\n\n"
             "- read_file: Read the content of a specific file on the user's machine (client-side execution).\n"
-            "- edit_file: Replace the first occurrence of 'string_to_replace' with 'new_string' in the specified 'file_path' on the user's machine (client-side execution). Use with caution.\n\n"
+            "- edit_file: Replace the first occurrence of 'string_to_replace' with 'new_string' in the specified 'file_path' on the user's machine (client-side execution). Use with caution.\n"
+            "- browser_user: Perform a complex web browsing task based on a given objective using an autonomous agent. Use this for tasks requiring interaction with websites, filling forms, or synthesizing information from multiple pages (server-side execution).\n\n"
             "Follow these steps:\n"
             "1. Understand the user's request based on their message and the screenshot context (if provided).\n"
             "2. Plan the steps needed. This might involve multiple tool uses (e.g., search the web, then run a command based on results).\n"

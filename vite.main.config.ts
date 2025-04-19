@@ -5,24 +5,27 @@ import { resolve } from 'node:path';
 // Back to simpler config, relying on env vars for ws native addon handling
 export default defineConfig({
   resolve: {
-    // Keep alias as a potential fallback
-    alias: {
-      'bufferutil': resolve(__dirname, './stub.js'), 
-      'utf-8-validate': resolve(__dirname, './stub.js'),
-    },
+    // Remove aliases for optional ws dependencies
+    // alias: {
+    //   'bufferutil': resolve(__dirname, './stub.js'), 
+    //   'utf-8-validate': resolve(__dirname, './stub.js'),
+    // },
   },
   optimizeDeps: {
-    // Also exclude in optimizeDeps for good measure
-    exclude: ['ws'],
+    // Let Vite handle 'ws'
+    // exclude: ['ws'],
   },
   ssr: {
-    // Ensure it's external during SSR-like builds (which main process resembles)
-    external: ['ws']
+    // Let Vite handle 'ws'
+    // external: ['ws']
+    // Explicitly tell Vite to BUNDLE these for the main process (SSR-like build)
+    // Keep bundling squirrel/debug/ms, but let ws be external again
+    noExternal: ['electron-squirrel-startup', 'debug', 'ms']
   },
   build: {
     rollupOptions: {
-      // Explicitly tell Rollup (Vite's bundler) to treat 'ws' as external
-      external: ['ws'],
+      // Let Vite bundle 'ws'
+      // external: ['ws'],
     },
     // Ensure we target a Node.js environment for the main process build
     // (This might be handled by the Electron Forge plugin, but explicit is safer)

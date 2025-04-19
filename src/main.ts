@@ -6,10 +6,15 @@ import WebSocket from 'ws';
 import { exec } from 'node:child_process';
 import type { ToolCall } from './types'; // Import ToolCall type for storage
 import { executeTool } from './tool-executor'; // Import the executor function
+// Use ESM import for electron-squirrel-startup
+import SquirrelStartup from 'electron-squirrel-startup';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-if (require('electron-squirrel-startup')) {
+// if (require('electron-squirrel-startup')) {
+//   app.quit();
+// }
+if (SquirrelStartup) {
   app.quit();
 }
 
@@ -173,6 +178,7 @@ const createWindow = () => {
     vibrancy: 'sidebar',
     visualEffectState: 'active',
     transparent: true,
+    alwaysOnTop: true,
     // icon: Path.join(__dirname, '../nohup.png'), // Removed for now
     webPreferences: {
       preload: Path.join(__dirname, 'preload.js'),

@@ -3,8 +3,10 @@ import subprocess
 import os # For reading env vars
 from dotenv import load_dotenv # For reading env vars
 from tavily import TavilyClient # Import Tavily client
+from langchain_openai import ChatOpenAI # Import OpenAI client
+from browser_use import Agent # Import Browser Agent
 
-# --- Load Env Vars and Initialize Tavily Client ---
+# --- Load Env Vars and Initialize Clients ---
 load_dotenv()
 tavily_api_key = os.getenv("TAVILY_API_KEY")
 if not tavily_api_key:
@@ -12,6 +14,14 @@ if not tavily_api_key:
     tavily_client = None
 else:
     tavily_client = TavilyClient(api_key=tavily_api_key)
+
+openai_api_key = os.getenv("OPENAI_API_KEY")
+if not openai_api_key:
+    print("[WARN] OPENAI_API_KEY not found in environment variables. Browser tool will not work.")
+    llm = None
+else:
+    # Initialize the LLM globally for the browser tool
+    llm = ChatOpenAI(model="gpt-4.1-mini", openai_api_key=openai_api_key) 
 # --- End Init ---
 
 async def run_bash_command(command: str) -> str:
@@ -105,6 +115,32 @@ async def perform_web_search(query: str, num_results: int = 3) -> str:
         print(f"[Server Tool Error] Tavily search failed: {e}")
         return f"Error: Tavily search failed - {e}"
 # --- End Updated Function --- 
+
+# --- New Tool: Browser User ---
+async def execute_browser_task(task: str) -> str:
+    """Executes a browsing task using the browser_use.Agent.
+    Args: task: The string describing the task for the agent.
+    Returns: String containing the result from the agent or an error message.
+    """
+    print(f"[Server Tool] Browser agent task: '{task}'")
+    if not llm:
+        return "Error: OpenAI API key not configured. Browser tool cannot run."
+    if not Agent:
+        return "Error: browser_use.Agent could not be imported."
+
+    try:
+        # Instantiate and run the agent
+        agent = Agent(task=task, llm=llm)
+        result = await agent.run()
+        print(f"[Server Tool] Browser agent finished task: '{task}'")
+        return str(result) # Ensure result is string
+    except ImportError:
+         print("[Server Tool Error] Failed to import browser_use.Agent. Make sure browser_use.py exists and is importable.")
+         return "Error: Failed to import browser_use.Agent."
+    except Exception as e:
+        print(f"[Server Tool Error] Browser agent failed: {e}")
+        return f"Error: Browser agent failed - {e}"
+# --- End Browser User ---
 
 # Tool definition for OpenAI API
 RUN_BASH_TOOL_SCHEMA = {
@@ -236,9 +272,30 @@ EDIT_FILE_TOOL_SCHEMA = {
 }
 # --- End File Edit Schema ---
 
+# --- New Browser User Tool Schema ---
+BROWSER_USER_TOOL_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "browser_user",
+        "description": "Perform a complex web browsing task based on a given objective using an autonomous agent. Use this for tasks requiring interaction with websites, filling forms, or synthesizing information from multiple pages.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "task": {
+                    "type": "string",
+                    "description": "The detailed task or objective for the browsing agent to accomplish (e.g., 'Find the current price of Bitcoin on Binance and Coinbase', 'Summarize the latest news about AI regulation').",
+                },
+            },
+            "required": ["task"],
+        },
+    }
+}
+# --- End Browser User Schema ---
+
 # --- Registry for Server-Executable Tools --- 
 SERVER_EXECUTABLE_TOOLS = {
     "search": perform_web_search,
+    "browser_user": execute_browser_task, # Add browser user tool
     # Add other server-side functions here mapped by their name
 }
 # --- End Registry --- 
@@ -251,5 +308,6 @@ TOOL_SCHEMAS = [
     SEARCH_TOOL_SCHEMA, # Add search tool
     READ_FILE_TOOL_SCHEMA, # Add file read tool
     EDIT_FILE_TOOL_SCHEMA, # Add file edit tool
+    BROWSER_USER_TOOL_SCHEMA, # Add browser user tool
     # Add other tool schemas here
 ] 
