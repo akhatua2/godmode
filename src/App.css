@@ -1,0 +1,377 @@
+/* src/App.css */
+
+.app-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: transparent; /* Ensure container doesn't block blur */
+  overflow: hidden; /* Prevent outer scroll */
+  /* Change text color to dark */
+  color: #333;
+  /* -webkit-app-region: drag; */ /* Keep drag region off main container */
+}
+
+/* Style the dedicated title bar */
+.title-bar {
+  height: 28px; /* Adjust height as needed for macOS title bar feel */
+  flex-shrink: 0; /* Prevent it from shrinking */
+  /* Remove temporary background */
+  /* background-color: rgba(255, 255, 255, 0.1); */
+  /* This is the ONLY draggable area now */
+   -webkit-app-region: drag; 
+}
+
+.messages-area {
+  flex-grow: 1;
+  overflow-y: auto; /* Allow scrolling for messages */
+  padding: 10px 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px; /* Slightly reduce gap */
+  background-color: transparent; /* Ensure transparent background */
+  /* This area should NOT be draggable */
+  -webkit-app-region: no-drag;
+}
+
+/* New message item base styles */
+.message-item {
+  /* Add some vertical spacing if needed */
+  /* margin-bottom: 4px; */
+  /* Prevent text selection from making bg opaque */
+  background-color: transparent !important; 
+  padding: 0; /* Remove padding */
+  border-radius: 0; /* Remove border-radius */
+  max-width: 100%; /* Allow full width */
+  word-wrap: break-word;
+  color: #eee; /* Default text color (light) */
+  font-size: 0.7rem; /* Default font size */
+  line-height: 1.4;
+}
+
+/* Style for user messages */
+.message-user {
+  text-align: right;
+  font-size: 0.85rem; /* Make user text slightly smaller */
+  color: #ccc; /* Make user text slightly dimmer */
+}
+
+/* Style for bot messages (default alignment is left) */
+.message-bot {
+  text-align: left;
+}
+
+/* === Remove Old Screenshot Toggle Button Styles === */
+/*
+.screenshot-toggle-button { ... }
+.screenshot-toggle-button:hover { ... }
+*/
+
+/* === New Collapsible Screenshot Styles === */
+.screenshot-container {
+  /* Container for the whole screenshot block */
+  margin-top: 4px; /* Add some space above */
+  /* background-color: rgba(255, 255, 255, 0.05); /* Optional faint bg */
+  /* border-radius: 4px; */
+}
+
+.screenshot-header {
+  display: inline-flex; /* Align items inline */
+  align-items: center;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  background-color: rgba(100, 100, 100, 0.3); /* Faint background for header */
+  margin-bottom: 4px; /* Space between header and image if expanded */
+}
+
+.screenshot-header:hover {
+  background-color: rgba(120, 120, 120, 0.4);
+}
+
+.screenshot-chevron {
+  margin-right: 6px;
+  font-weight: bold;
+  color: #ccc; /* Chevron color */
+  display: inline-block;
+  width: 10px; /* Give chevron some space */
+  text-align: center;
+  vertical-align: middle; /* Try this instead */
+}
+
+.screenshot-label {
+  font-size: 12px; /* Smaller label text */
+  color: #ddd;
+}
+
+.screenshot-image-wrapper {
+  /* Add padding or margin if needed around the image */
+  padding-top: 4px;
+}
+
+.screenshot-image {
+  display: block; /* Prevent extra space below image */
+  /* Define fixed size */
+  max-width: 250px; 
+  height: 150px; 
+  object-fit: cover; /* Scale image nicely within fixed dimensions */
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1); /* Optional subtle border */
+}
+
+/* Remove user-specific styling */
+/* .message:where(:contains("You:")) { ... } */
+
+/* === New Styles Based on Reference Tailwind Classes === */
+
+/* Form container - p-2 border-gray-200 */
+.p-2.border-gray-200 {
+  padding: 0.5rem; /* p-2 */
+  /* border-color: #e5e7eb; /* border-gray-200 */
+  /* We won't add the outer form border to keep the floating look */
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+}
+
+/* Main input container - bg-white border border-gray-200 rounded-lg overflow-hidden */
+.bg-white.border.border-gray-200.rounded-lg {
+  background-color: transparent; 
+  border: 1px solid rgba(180, 180, 180, 0.5); 
+  border-radius: 0.5rem; 
+  overflow: hidden;
+  padding-top: 0.5rem; /* Add padding above textarea */
+}
+
+/* Textarea - w-full px-2 pt-0.5 pb-0.5 text-xs text-gray-700 bg-transparent border-none focus:outline-none focus:ring-0 resize-none min-h-[44px] scrollbar-none relative */
+.w-full.px-2.pt-0\.5.pb-0\.5.text-xs.text-gray-700.bg-transparent.border-none.focus\:outline-none.focus\:ring-0.resize-none.min-h-\[44px\].scrollbar-none.relative {
+  width: 100%;
+  padding-left: 0.5rem; /* px-2 */
+  padding-right: 0.5rem; /* px-2 */
+  padding-top: 0.125rem; /* pt-0.5 */
+  padding-bottom: 0.125rem; /* pb-0.5 */
+  font-size: 0.7rem;
+  line-height: 1.25rem; /* Adjusted line height */
+  color: #eee; /* Change text back to light */
+  background-color: transparent;
+  border: none;
+  outline: none;
+  box-shadow: none; /* focus:ring-0 */
+  resize: none;
+  min-height: 44px;
+  position: relative; /* relative */
+  overflow-y: auto; /* Override scrollbar-none for functionality */
+  max-height: 200px; /* From previous logic */
+}
+
+/* === Remove Bottom Bar Styles === */
+/*
+.flex.items-center.justify-between.px-2.py-1\.5.border-t.border-gray-100 { ... }
+.flex.items-center.gap-2 { ... }
+.text-\[10px\].text-gray-600.rounded.px-1.py-0\.5.bg-white.appearance-none.border-none.focus\:outline-none.focus\:ring-0 { ... }
+.text-\[10px\].text-gray-400 { ... }
+.flex.items-center.gap-1.px-3.py-0\.5.text-xs.bg-blue-500.text-white.rounded-md.hover\:bg-blue-600.disabled\:bg-blue-300.disabled\:cursor-not-allowed { ... }
+.flex.items-center.gap-1.px-3.py-0\.5.text-xs.bg-blue-500.text-white.rounded-md.hover\:bg-blue-600.disabled\:bg-blue-300.disabled\:cursor-not-allowed:hover { ... }
+.flex.items-center.gap-1.px-3.py-0\.5.text-xs.bg-blue-500.text-white.rounded-md.hover\:bg-blue-600.disabled\:bg-blue-300.disabled\:cursor-not-allowed:disabled { ... }
+.w-3.h-3 { ... }
+*/
+
+/* Custom scrollbar styling (keep subtle) */
+.messages-area::-webkit-scrollbar {
+  width: 5px;
+}
+
+.messages-area::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.messages-area::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+
+.messages-area::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(0, 0, 0, 0.4);
+}
+
+/* === Tool Request Styles === */
+/* Commenting out older styles to prevent conflicts with .tool-terminal-* rules */
+/*
+.message-tool-request {
+  padding: 10px 15px;
+  border-radius: 8px;
+  background-color: rgba(255, 223, 186, 0.2); 
+  border: 1px solid rgba(255, 165, 0, 0.4); 
+  color: #eee; 
+  align-self: flex-start; 
+  max-width: 90%; 
+}
+
+.tool-request-content p {
+    margin: 5px 0;
+}
+
+.tool-command {
+    background-color: rgba(0, 0, 0, 0.3); 
+    padding: 8px;
+    border-radius: 4px;
+    margin: 8px 0;
+    overflow-x: auto; 
+}
+
+.tool-command code {
+    font-family: monospace;
+    font-size: 0.85rem; 
+    color: #f0f0f0; 
+}
+
+.tool-buttons {
+    margin-top: 10px;
+    display: flex;
+    gap: 10px; 
+}
+
+.tool-button {
+    padding: 6px 12px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background-color 0.2s ease;
+}
+
+.tool-button.approve {
+    background-color: rgba(0, 128, 0, 0.6); 
+    color: white;
+}
+.tool-button.approve:hover {
+    background-color: rgba(0, 128, 0, 0.8);
+}
+
+.tool-button.deny {
+    background-color: rgba(220, 20, 60, 0.6); 
+    color: white;
+}
+.tool-button.deny:hover {
+    background-color: rgba(220, 20, 60, 0.8);
+}
+*/
+
+/* === NEW Terminal Style Tool Request Rules === */
+
+.message-tool-request .tool-terminal-container {
+  /* Remove specific background and border */
+  /* background-color: #282c34; */
+  /* border: 1px solid #404652; */
+  border-radius: 6px; /* Keep slight rounding */
+  padding: 8px; /* Reduce padding slightly */
+  color: #abb2bf; /* Keep text color */
+  font-family: 'Courier New', Courier, monospace; /* Keep font */
+  position: relative; /* Needed for buttons */
+  margin: 4px 0;
+  align-self: flex-start; 
+  max-width: 90%; 
+  /* Remove overrides if base message-tool-request styles are removed/changed */
+  /* padding: 12px !important; */ 
+  /* border: 1px solid #404652 !important; */
+}
+
+.tool-terminal-content {
+  /* Remove margin-bottom if prompt is gone */
+  /* margin-bottom: 20px; */
+}
+
+/* Remove prompt style */
+/*
+.tool-terminal-prompt {
+  font-size: 0.8em;
+  margin-bottom: 6px;
+  color: #61afef; 
+}
+*/
+
+.tool-terminal-command {
+  /* Remove specific background */
+  /* background-color: #1e2127; */
+  padding: 4px 0; /* Minimal padding */
+  border-radius: 0; /* No rounding for command block */
+  overflow-x: auto; 
+  font-size: 0.85em;
+  margin: 0;
+}
+
+.tool-terminal-command code {
+  color: #98c379; /* Keep command text color */
+  white-space: pre-wrap; 
+}
+
+.tool-terminal-buttons {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  display: flex;
+  gap: 6px;
+}
+
+.tool-button-cancel,
+.tool-button-ok {
+  padding: 2px 8px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.75em;
+  font-weight: bold;
+  /* Optional: Add subtle background on hover/focus */
+  transition: background-color 0.15s ease-in-out;
+}
+
+.tool-button-ok {
+  background-color: #5a9e5a; 
+  color: white;
+}
+
+.tool-button-cancel {
+  background-color: #c24f4f; 
+  color: white;
+}
+
+.tool-button-ok:hover {
+  background-color: #6aaf6a;
+}
+
+.tool-button-cancel:hover {
+  background-color: #d46262;
+}
+
+/* === Hide Old Tool Request Styles (if any conflicting) === */
+/* Ensure old styles are removed or commented out */
+/* Example: */
+/*
+.message-tool-request {
+  padding: 10px 15px;
+  ...
+}
+.tool-request-content p { ... }
+.tool-command { ... }
+.tool-command code { ... }
+.tool-buttons { ... }
+.tool-button { ... }
+.tool-button.approve { ... }
+.tool-button.deny { ... }
+*/ 
+
+/* === Command Output Styles === */
+.message-command-output {
+  margin: 4px 0;
+  align-self: stretch; /* Let it take full width */
+}
+
+.command-output-text {
+  background-color: rgba(50, 50, 50, 0.4); /* Faint dark background */
+  padding: 8px 12px;
+  border-radius: 4px;
+  color: #ccc; /* Dimmer text color */
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.75em; /* Smaller font for output */
+  white-space: pre-wrap; /* Wrap long lines */
+  word-wrap: break-word;
+  margin: 0; /* Remove default pre margin */
+} 
