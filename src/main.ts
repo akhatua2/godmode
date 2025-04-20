@@ -254,6 +254,25 @@ app.on('ready', () => {
   createWindow();
   connectWebSocket();
 
+  // --- Register Global Shortcut for Sending Message ---
+  const sendShortcut = 'CommandOrControl+K';
+  const retSend = globalShortcut.register(sendShortcut, () => {
+      console.log(`[GlobalShortcut] ${sendShortcut} pressed.`);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+          console.log('[IPC] Sending trigger-send-message');
+          mainWindow.webContents.send('trigger-send-message');
+      } else {
+          console.warn(`[GlobalShortcut] ${sendShortcut} pressed, but mainWindow is not available.`);
+      }
+  });
+
+  if (!retSend) {
+      console.error(`[GlobalShortcut] Registration failed for ${sendShortcut}`);
+  } else {
+      console.log(`[GlobalShortcut] ${sendShortcut} registered successfully`);
+  }
+  // --- End Send Message Global Shortcut ---
+
   // --- Register Global Shortcut --- 
   // Feature removed: CommandOrControl+I for paste
   // const ret = globalShortcut.register('CommandOrControl+I', () => {
@@ -432,8 +451,14 @@ app.on('will-quit', () => {
   // globalShortcut.unregister('CommandOrControl+I');
   // console.log('[GlobalShortcut] CommandOrControl+I unregistered.');
 
+  // --- Unregister Send Shortcut ---
+  const sendShortcut = 'CommandOrControl+K';
+  globalShortcut.unregister(sendShortcut);
+  console.log(`[GlobalShortcut] ${sendShortcut} unregistered.`);
+  // --- End Unregister Send Shortcut ---
+
   // Unregister all accelerators
-  globalShortcut.unregisterAll();
+  globalShortcut.unregisterAll(); // Keep this as a fallback
   console.log('[GlobalShortcut] All shortcuts unregistered.');
 });
 

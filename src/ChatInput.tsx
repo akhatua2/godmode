@@ -20,6 +20,31 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   // State for the screenshot toggle, default to false
   const [includeScreenshot, setIncludeScreenshot] = useState(false); 
 
+  // --- Listener for CMD+K Shortcut ---
+  useEffect(() => {
+    const handleGlobalSend = () => {
+      console.log('[ChatInput] CMD+K triggered, calling handleSendMessage');
+      handleSendMessage();
+    };
+
+    console.log('[ChatInput] Setting up trigger-send-message listener');
+    window.electronAPI.onTriggerSendMessage(handleGlobalSend);
+
+    // Cleanup function to remove the listener
+    return () => {
+      console.log('[ChatInput] Removing trigger-send-message listener');
+      window.cleanup.removeTriggerSendMessageListener();
+    };
+    // IMPORTANT: We pass handleSendMessage in the dependency array.
+    // If handleSendMessage relies on props/state (like inputValue, includeScreenshot, isProcessing),
+    // those should ALSO be in the dependency array or handleSendMessage should be memoized
+    // using useCallback in the component definition.
+    // For simplicity here, we assume handleSendMessage captures the latest state correctly
+    // when called, but this could cause stale closure issues if not careful.
+    // Let's add its dependencies to be safe.
+  }, [inputValue, includeScreenshot, isProcessing]); // Add dependencies of handleSendMessage
+  // --- End Listener for CMD+K Shortcut ---
+
   const adjustTextareaHeight = () => {
     const textarea = textareaRef.current;
     if (textarea) {
@@ -39,6 +64,9 @@ export const ChatInput: React.FC<ChatInputProps> = ({
       // Call the new sendMessage function via preload
       window.electronAPI.sendMessage(inputValue, includeScreenshot);
       // Input clearing etc. will be handled by App.tsx based on receiving the user message back
+    } else {
+        // Add a log here to see why it might not be sending
+        console.log(`[ChatInput] handleSendMessage called via shortcut/enter, but conditions not met. isProcessing: ${isProcessing}, inputValue empty: ${!inputValue.trim()}`);
     }
   };
 

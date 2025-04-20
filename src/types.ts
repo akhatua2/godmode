@@ -81,6 +81,8 @@ export interface IElectronAPI {
   sendUserResponse: (requestId: string, answer: string) => void;
   // --- Cost Update Listener --- 
   onCostUpdate: (callback: (event: IpcRendererEvent, payload: CostUpdatePayload) => void) => void;
+  // --- Send Message Trigger Listener ---
+  onTriggerSendMessage: (callback: (event: IpcRendererEvent) => void) => void;
 }
 
 // Interface for the cleanup functions exposed by the preload script
@@ -102,6 +104,8 @@ export interface ICleanupAPI {
     removeAgentStepUpdateListener: () => void;
     // --- Cost Update Cleanup --- 
     removeCostUpdateListener: () => void;
+    // --- Send Message Trigger Cleanup ---
+    removeTriggerSendMessageListener: () => void;
 }
 
 // Extend the Window interface to include our exposed APIs

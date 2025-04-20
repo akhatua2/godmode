@@ -28,6 +28,9 @@ let agentStepUpdateListener: ((event: IpcRendererEvent, data: AgentStepUpdateDat
 // --- Cost Update Listener --- 
 let costUpdateListener: ((event: IpcRendererEvent, payload: CostUpdatePayload) => void) | null = null;
 
+// --- Listener for Send Message Trigger --- 
+let triggerSendMessageListener: ((event: IpcRendererEvent) => void) | null = null;
+
 // --- electronAPI Definition ---
 const electronAPI = {
   sendMessage: (text: string, includeScreenshot: boolean) => {
@@ -129,6 +132,13 @@ const electronAPI = {
       ipcRenderer.on('cost-update-from-main', costUpdateListener);
   },
 
+  // --- Send Message Trigger Listener Setup ---
+  onTriggerSendMessage: (callback: (event: IpcRendererEvent) => void) => {
+      if (triggerSendMessageListener) ipcRenderer.removeListener('trigger-send-message', triggerSendMessageListener);
+      triggerSendMessageListener = callback;
+      ipcRenderer.on('trigger-send-message', triggerSendMessageListener);
+  },
+
   // --- Global Paste Listener Setup ---
   // Feature removed: CommandOrControl+I paste
   // onPasteFromGlobalShortcut: (callback: (event: IpcRendererEvent, content: string) => void) => {
@@ -219,6 +229,15 @@ const cleanupAPI = {
             costUpdateListener = null;
         }
     },
+
+    // --- Send Message Trigger Remover ---
+    removeTriggerSendMessageListener: () => {
+        if (triggerSendMessageListener) {
+            ipcRenderer.removeListener('trigger-send-message', triggerSendMessageListener);
+            triggerSendMessageListener = null;
+        }
+    },
+
     // --- Global Paste Remover ---
     // Feature removed: CommandOrControl+I paste
     // removePasteFromGlobalShortcutListener: () => {
