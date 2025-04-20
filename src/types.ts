@@ -59,7 +59,7 @@ export interface CostUpdatePayload {
 
 // Interface for the API exposed by the preload script
 export interface IElectronAPI {
-  sendMessage: (text: string, includeScreenshot: boolean) => void;
+  sendMessage: (text: string, includeScreenshot: boolean, contextText?: string | null) => void;
   // Listener for regular messages, errors, images, connection status
   onMessageFromMain: (callback: (event: IpcRendererEvent, message: Message) => void) => void;
   // Listeners for streaming text responses
@@ -83,6 +83,10 @@ export interface IElectronAPI {
   onCostUpdate: (callback: (event: IpcRendererEvent, payload: CostUpdatePayload) => void) => void;
   // --- Send Message Trigger Listener ---
   onTriggerSendMessage: (callback: (event: IpcRendererEvent) => void) => void;
+  // --- Paste from Clipboard Listener ---
+  onSetSelectedTextContext: (callback: (event: IpcRendererEvent, content: string) => void) => void;
+  // --- Function to set LLM model ---
+  setLlmModel: (modelName: string) => void;
 }
 
 // Interface for the cleanup functions exposed by the preload script
@@ -106,6 +110,8 @@ export interface ICleanupAPI {
     removeCostUpdateListener: () => void;
     // --- Send Message Trigger Cleanup ---
     removeTriggerSendMessageListener: () => void;
+    // --- Paste from Clipboard Cleanup ---
+    removeSetSelectedTextContextListener: () => void;
 }
 
 // Extend the Window interface to include our exposed APIs

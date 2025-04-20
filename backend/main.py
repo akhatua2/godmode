@@ -209,16 +209,20 @@ async def websocket_endpoint(websocket: WebSocket):
                 if message_type == "user_message":
                     text = message_data.get("text")
                     screenshot_data_url = message_data.get("screenshot_data_url")
+                    # --- Get context text --- 
+                    context_text = message_data.get("context_text") # Can be None or empty string
+                    # --- End get context --- 
+
                     if not text:
                         await websocket.send_text(json.dumps({"type": "error", "content": "Missing text in user_message"}))
                         continue
                     
-                    print(f"[WebSocket] Processing user_message: {text[:50]}...")
+                    print(f"[WebSocket] Processing user_message: {text[:50]}... Context provided: {bool(context_text)}")
                     
                     # --- Check if responding to ask_user --- 
                     if agent.pending_ask_user_tool_call_id:
                         print(f"[WebSocket] Treating user message as response to ask_user ID: {agent.pending_ask_user_tool_call_id}")
-                        # Add as TOOL message
+                        # Add as TOOL message (DO NOT prepend context here)
                         agent.add_message_to_memory(
                             role="tool",
                             tool_call_id=agent.pending_ask_user_tool_call_id,
@@ -226,14 +230,21 @@ async def websocket_endpoint(websocket: WebSocket):
                         )
                         agent.pending_ask_user_tool_call_id = None # Clear the pending ID
                     else:
+                        # --- Prepare user content, potentially prepending context --- 
+                        final_text_content = text
+                        if context_text and context_text.strip(): # Check if context exists and is not just whitespace
+                            final_text_content = f"Based on this context:\n```\n{context_text}\n```\n\n{text}"
+                            print("[WebSocket] Prepended context to user message.")
+                        
                         # Add as standard USER message
-                        user_content: List[Dict[str, Any]] = [{"type": "text", "text": text}]
+                        user_content: List[Dict[str, Any]] = [{"type": "text", "text": final_text_content}]
                         if screenshot_data_url:
                             user_content.append({
                                 "type": "image_url",
                                 "image_url": {"url": screenshot_data_url}
                             })
                         agent.add_message_to_memory(role="user", content=user_content)
+                        # --- End message preparation and adding --- 
                     # --- End message adding logic ---
                     
                     # --- Run the agent step --- 
@@ -308,6 +319,19 @@ async def websocket_endpoint(websocket: WebSocket):
                         await websocket.send_text(json.dumps({"type": "warning", "content": f"Received response for unknown or expired request ID {request_id}."}))
                     # --- End user_response handling ---
                     
+                # --- Handle setting LLM model --- 
+                elif message_type == "set_llm_model":
+                    model_name = message_data.get("model_name")
+                    if model_name and isinstance(model_name, str):
+                        print(f"[WebSocket] Received request to set model to: {model_name}")
+                        agent.set_model(model_name) # Use existing agent method
+                        # Optionally send confirmation back?
+                        # await websocket.send_text(json.dumps({"type": "info", "content": f"Model set to {model_name}"}))
+                    else:
+                        print(f"[WebSocket WARNING] Received invalid set_llm_model message: {message_data}")
+                        await websocket.send_text(json.dumps({"type": "error", "content": "Invalid or missing model_name in set_llm_model message"}))
+                # --- End set_llm_model handling ---
+                
                 else:
                     print(f"[WebSocket WARNING] Invalid message type received: {message_type}")
                     await websocket.send_text(json.dumps({"type": "error", "content": f"Invalid message type received: {message_type}"}))

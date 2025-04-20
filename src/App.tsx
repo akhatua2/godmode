@@ -35,6 +35,10 @@ function App() {
   const [currentSessionCost, setCurrentSessionCost] = useState<number>(0.0);
   // --- End Cost State ---
 
+  // --- State for Selected Text Context --- 
+  const [selectedTextContexts, setSelectedTextContexts] = useState<string[]>([]);
+  // --- End Context State ---
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }
@@ -65,6 +69,8 @@ function App() {
       // If it was a user message, clear input and set processing state.
       if (message.isUser) {
         setInputValue(''); 
+        // Clear the array
+        setSelectedTextContexts([]); // Clear context array after sending
         setIsProcessing(true); // Start processing (screenshot + LLM)
       }
       // If it's an error message or connection message, stop processing.
@@ -188,6 +194,16 @@ function App() {
     };
     // --- End Cost Listener --- 
 
+    // --- Listener for Selected Text Context ---
+    const handleSetSelectedTextContext = (event: Electron.IpcRendererEvent, content: string) => {
+        console.log('App: Selected text context received:', content.substring(0, 100), '...');
+        // Append to array instead of replacing
+        setSelectedTextContexts(prev => [...prev, content]);
+        // Optionally, you might want to clear the main input value when context is added
+        // setInputValue(''); 
+    };
+    // --- End Context Listener ---
+
     // Set up the listeners using the exposed API
     // Feature removed: CommandOrControl+I paste
     // const handleGlobalPaste = (event: Electron.IpcRendererEvent, content: string) => {
@@ -211,6 +227,9 @@ function App() {
     // Feature removed: CommandOrControl+I paste
     // window.electronAPI.onPasteFromGlobalShortcut(handleGlobalPaste); // Add listener
 
+    // Add the new listener
+    window.electronAPI.onSetSelectedTextContext(handleSetSelectedTextContext);
+
     // Cleanup function to remove the listeners when the component unmounts
     return () => {
       // Assume these cleanup functions will be exposed via preload
@@ -229,6 +248,9 @@ function App() {
       window.cleanup?.removeCostUpdateListener();
       // Feature removed: CommandOrControl+I paste
       // window.cleanup?.removePasteFromGlobalShortcutListener(); // Add cleanup
+
+      // Add cleanup for the new listener
+      window.cleanup?.removeSetSelectedTextContextListener();
     };
   }, []); // Empty dependency array means this runs once on mount
 
@@ -255,10 +277,17 @@ function App() {
   };
   // --- End Handler ---
 
+  // --- Function to clear selected text context ---
+  const handleRemoveContext = (indexToRemove: number) => {
+    setSelectedTextContexts(prev => prev.filter((_, index) => index !== indexToRemove));
+  };
+  // --- End Clear/Remove Context Function ---
+
   return (
     <div className="app-container">
       {/* Empty div for dragging */}
       <div className="title-bar"></div>
+
       <div className="messages-area">
         {messages.map((msg, index) => {
           // Determine if this specific tool request has been responded to
@@ -293,6 +322,9 @@ function App() {
         // Disable main input if processing OR if waiting for user response to agent
         isProcessing={isProcessing || isBotStreaming || !!pendingQuestion} 
         sessionCost={currentSessionCost}
+        // Pass context array and remove function down
+        contextTexts={selectedTextContexts}
+        onRemoveContext={handleRemoveContext}
       />
       {/* --- Conditional Input for Agent Question --- */}
       {pendingQuestion && (

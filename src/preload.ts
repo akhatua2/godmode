@@ -31,10 +31,13 @@ let costUpdateListener: ((event: IpcRendererEvent, payload: CostUpdatePayload) =
 // --- Listener for Send Message Trigger --- 
 let triggerSendMessageListener: ((event: IpcRendererEvent) => void) | null = null;
 
+// --- Listener for Paste from Clipboard --- 
+let selectedTextContextListener: ((event: IpcRendererEvent, content: string) => void) | null = null;
+
 // --- electronAPI Definition ---
 const electronAPI = {
-  sendMessage: (text: string, includeScreenshot: boolean) => {
-      ipcRenderer.send('send-message', { text, includeScreenshot }); 
+  sendMessage: (text: string, includeScreenshot: boolean, contextText?: string | null) => {
+      ipcRenderer.send('send-message', { text, includeScreenshot, contextText }); 
   },
   onMessageFromMain: (callback: (event: IpcRendererEvent, message: Message) => void) => {
     // Remove existing listener if any before adding a new one
@@ -139,6 +142,19 @@ const electronAPI = {
       ipcRenderer.on('trigger-send-message', triggerSendMessageListener);
   },
 
+  // --- Paste from Clipboard Listener Setup ---
+  onSetSelectedTextContext: (callback: (event: IpcRendererEvent, content: string) => void) => {
+      if (selectedTextContextListener) ipcRenderer.removeListener('set-selected-text-context', selectedTextContextListener);
+      selectedTextContextListener = callback;
+      ipcRenderer.on('set-selected-text-context', selectedTextContextListener);
+  },
+
+  // --- Function to set LLM model --- 
+  setLlmModel: (modelName: string) => {
+      console.log(`[Preload] Sending set-llm-model IPC: ${modelName}`);
+      ipcRenderer.send('set-llm-model', modelName);
+  },
+
   // --- Global Paste Listener Setup ---
   // Feature removed: CommandOrControl+I paste
   // onPasteFromGlobalShortcut: (callback: (event: IpcRendererEvent, content: string) => void) => {
@@ -235,6 +251,14 @@ const cleanupAPI = {
         if (triggerSendMessageListener) {
             ipcRenderer.removeListener('trigger-send-message', triggerSendMessageListener);
             triggerSendMessageListener = null;
+        }
+    },
+
+    // --- Paste from Clipboard Remover ---
+    removeSetSelectedTextContextListener: () => {
+        if (selectedTextContextListener) {
+            ipcRenderer.removeListener('set-selected-text-context', selectedTextContextListener);
+            selectedTextContextListener = null;
         }
     },
 

@@ -8,17 +8,33 @@ interface ChatInputProps {
   onInputChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
   sessionCost: number; // Add sessionCost prop
   // onSubmit?: () => void; // No longer needed as submit goes via IPC
+  contextTexts: string[];
+  onRemoveContext: (index: number) => void;
 }
 
 export const ChatInput: React.FC<ChatInputProps> = ({ 
   inputValue, 
   isProcessing, 
   onInputChange, 
-  sessionCost // Destructure the prop
+  sessionCost, // Destructure the prop
+  contextTexts,
+  onRemoveContext,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   // State for the screenshot toggle, default to false
   const [includeScreenshot, setIncludeScreenshot] = useState(false); 
+
+  // --- State and Handler for Model Selection (MOVED FROM APP) --- 
+  const availableModels = ["gpt-4o-mini", "gpt-4.1-mini"]; 
+  const [selectedModel, setSelectedModel] = useState<string>(availableModels[0]); // Default to first model
+  
+  const handleModelChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const newModel = event.target.value;
+    console.log(`[ChatInput] Model selected: ${newModel}`);
+    setSelectedModel(newModel);
+    window.electronAPI.setLlmModel(newModel); // Send update via IPC
+  };
+  // --- End Model State and Handler --- 
 
   // --- Listener for CMD+K Shortcut ---
   useEffect(() => {
@@ -59,11 +75,16 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   }, [inputValue]);
 
   const handleSendMessage = () => {
-    if (!isProcessing && inputValue.trim()) {
-      console.log(`[ChatInput] Sending message. Include screenshot: ${includeScreenshot}`);
-      // Call the new sendMessage function via preload
-      window.electronAPI.sendMessage(inputValue, includeScreenshot);
-      // Input clearing etc. will be handled by App.tsx based on receiving the user message back
+    // Read context from props
+    if (!isProcessing && (inputValue.trim() || contextTexts.length > 0)) { // Allow sending if contextTexts array has items
+      console.log(`[ChatInput] Sending message. Include screenshot: ${includeScreenshot}. Contexts: ${contextTexts.length}`);
+      
+      // Concatenate context texts into a single string
+      const concatenatedContext = contextTexts.join('\n\n'); // Join with double newline
+      
+      // Pass concatenated context string to the main process
+      window.electronAPI.sendMessage(inputValue, includeScreenshot, concatenatedContext);
+      // Input clearing and context clearing will be handled by App.tsx based on receiving the user message back
     } else {
         // Add a log here to see why it might not be sending
         console.log(`[ChatInput] handleSendMessage called via shortcut/enter, but conditions not met. isProcessing: ${isProcessing}, inputValue empty: ${!inputValue.trim()}`);
@@ -88,20 +109,39 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   return (
     <form onSubmit={handleSubmit} className="p-2 border-gray-200">
       <div className="bg-white border border-gray-200 rounded-lg overflow-hidden p-2 chat-input-container">
-        {/* New Add Context Button */}
-        <button
-          type="button" // Prevent form submission
-          onClick={() => setIncludeScreenshot(!includeScreenshot)}
-          disabled={isProcessing}
-          className={`add-context-button ${includeScreenshot ? 'active' : ''}`}
-          title={includeScreenshot ? 'Remove screenshot context' : 'Add screenshot context'}
-        >
-          {/* Styled '@' symbol */}
-          <span>@</span> 
-          Add screenshot
-        </button>
+        {/* --- NEW: Wrapper for top row elements --- */}
+        <div className="chat-input-top-row">
+          {/* Existing Add Context/Screenshot Button */}
+          <button
+            type="button" // Prevent form submission
+            onClick={() => setIncludeScreenshot(!includeScreenshot)}
+            disabled={isProcessing}
+            className={`toggle-screenshot-button ${includeScreenshot ? 'active' : ''}`}
+            title={includeScreenshot ? 'Remove screenshot context' : 'Add screenshot context'}
+          >
+            {/* Styled '@' symbol */}
+            <span>@</span> 
+            Add screenshot
+          </button>
 
-        {/* Textarea Container - Removed old camera button */}
+          {/* Render Selected Text Context Block (if it exists) */}
+          {contextTexts.map((text, index) => (
+            <div key={index} className="context-display-block">
+              <span className="context-text-preview">{text.substring(0, 10)}{text.length > 10 ? '...' : ''}</span>
+              <button 
+                type="button" 
+                onClick={() => onRemoveContext(index)} 
+                className="clear-context-button"
+                title="Clear context"
+              >
+                &times; {/* Use HTML entity for 'x' */}
+              </button>
+            </div>
+          ))}
+        </div>
+        {/* --- End Wrapper --- */}
+
+        {/* Textarea Container */}
         <textarea
           ref={textareaRef}
           value={inputValue}
@@ -117,10 +157,20 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         />
         {/* Removed the bottom bar with checkbox */}
 
-        {/* Session Cost Display */}
-        <div className="session-cost-display">
-          Cost: ${sessionCost.toFixed(6)} 
+        {/* --- NEW: Wrapper for bottom-right elements --- */}
+        <div className="chat-input-bottom-right">
+          {/* Session Cost Display (moved inside wrapper) */}
+          <div className="session-cost-display">
+            Cost: ${sessionCost.toFixed(3)} 
+          </div>
+          {/* Model Selector (moved here) */}
+          <select value={selectedModel} onChange={handleModelChange} className="model-selector-select">
+            {availableModels.map(model => (
+              <option key={model} value={model}>{model}</option>
+            ))}
+          </select>
         </div>
+        {/* --- End bottom-right wrapper --- */}
       </div>
     </form>
   );

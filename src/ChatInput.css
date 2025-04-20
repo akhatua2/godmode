@@ -77,49 +77,47 @@
 }
 
 /* New Add Context Button Styles */
-.add-context-button {
+.toggle-screenshot-button {
   display: inline-flex; /* Align icon and text */
   align-items: center;
   background-color: #383838; /* Dark background */
   color: #cccccc; /* Light text */
-  padding: 2px 6px; /* MINIMAL padding */
+  padding: 3px 6px; /* Increased vertical padding */
   border-radius: 4px; /* Slightly smaller radius */
   border: 1px solid #555555;
   font-size: 0.6rem; /* text-xs equivalent */
+  line-height: 1; /* Force line height for consistency */
   cursor: pointer;
-  margin-bottom: 4px; /* Space below button */
-  align-self: flex-start; /* Align button to the start */
+  /* margin-bottom: 4px; Handled by parent */
   transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 
-.add-context-button:hover {
+.toggle-screenshot-button:hover {
   background-color: #4a4a4a;
   border-color: #777777;
 }
 
-.add-context-button > span:first-of-type {
+.toggle-screenshot-button > span:first-of-type {
   /* Style for the '@' icon */
   display: inline-block;
   margin-right: 3px; /* Reduced margin */
   font-weight: normal; /* Optional: make it less bold */
 }
 
-.add-context-button.active {
+.toggle-screenshot-button.active {
   background-color: #4a4a4a; /* Slightly lighter when active */
   border-color: #888888;
   color: #ffffff; /* Brighter text */
 }
 
-.add-context-button.active > span:first-of-type {
+.toggle-screenshot-button.active > span:first-of-type {
   /* REMOVED border-color change */
 }
 
-.add-context-button:disabled {
+.toggle-screenshot-button:disabled {
   cursor: not-allowed;
   opacity: 0.6;
-} 
-
-
+}
 
 .git-diff-line {
 padding: 2px 5px; /* Adjust padding as needed */
@@ -144,13 +142,101 @@ background-color: rgba(0, 255, 0, 0.2); /* Example: translucent green */
 
 /* Session Cost Display Styles */
 .session-cost-display {
-    position: absolute;
-    bottom: 4px; /* Adjust as needed */
-    left: 8px;  /* Adjust as needed */
     font-size: 0.65rem; /* Very small font */
     color: #888; /* Dim color */
-    background-color: rgba(30, 30, 30, 0.6); /* Semi-transparent dark background */
     padding: 1px 4px;
     border-radius: 3px;
     pointer-events: none; /* Make it non-interactive */
 }
+
+/* --- Wrapper for top row elements --- */
+.chat-input-top-row {
+  display: flex;
+  align-items: center; /* Vertically align items */
+  margin-bottom: 4px; /* Space below this row */
+  flex-wrap: wrap; /* Allow items to wrap to the next line */
+  row-gap: 4px; /* Add gap between rows when wrapping */
+  column-gap: 4px; /* Add gap between columns */
+}
+
+/* --- Selected Text Context Block Styles --- */
+.context-display-block {
+  display: inline-flex; /* Use inline-flex to size to content */
+  align-items: center;
+  background-color: #383838; /* Similar to add context button */
+  color: #cccccc;
+  padding: 3px 6px; /* Increased vertical padding */
+  border-radius: 4px;
+  border: 1px solid #555555;
+  font-size: 0.6rem; /* Small font - Match button */
+  line-height: 1; /* Force line height for consistency */
+  box-sizing: border-box;
+}
+
+.context-label {
+  font-weight: bold;
+  margin-right: 5px;
+  white-space: nowrap; /* Prevent wrapping */
+}
+
+.context-text-preview {
+  flex-grow: 1; /* Take up remaining space */
+  white-space: nowrap; /* Prevent wrapping */
+  overflow: hidden; /* Hide overflow */
+  text-overflow: ellipsis; /* Add ellipsis */
+  margin-right: 5px;
+}
+
+.clear-context-button {
+  background: none;
+  border: none;
+  color: #cccccc;
+  cursor: pointer;
+  font-size: 0.6rem; /* Match surrounding text size */
+  line-height: 1;
+  padding: 0 2px;
+  margin-left: auto; /* Push to the right */
+}
+
+.clear-context-button:hover {
+  color: #ffffff;
+}
+/* --- End Context Block Styles --- */
+
+/* --- Model Selector Styles --- */
+/* Remove old container style */
+/*
+.model-selector-container {
+  padding: 4px 15px; 
+  border-bottom: 1px solid rgba(180, 180, 180, 0.1); 
+  text-align: center; 
+}
+*/
+
+.model-selector-select {
+  /* Remove visual styling */
+  background-color: transparent; /* Make background see-through */
+  color: #cccccc; /* Keep text color */
+  border: none; /* Remove border */
+  border-radius: 4px;
+  padding: 2px 5px;
+  font-size: 0.6rem; /* Smallish font */
+  outline: none;
+  cursor: pointer;
+}
+
+.model-selector-select:focus {
+  border-color: #61afef; /* Highlight on focus */
+}
+/* --- End Model Selector Styles --- */
+
+/* --- NEW: Bottom Right Wrapper --- */
+.chat-input-bottom-right {
+  position: absolute;
+  bottom: 4px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px; /* Spacing between cost and selector */
+}
+/* --- End Bottom Right Wrapper --- */

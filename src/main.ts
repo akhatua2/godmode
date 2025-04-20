@@ -273,23 +273,64 @@ app.on('ready', () => {
   }
   // --- End Send Message Global Shortcut ---
 
-  // --- Register Global Shortcut --- 
-  // Feature removed: CommandOrControl+I for paste
-  // const ret = globalShortcut.register('CommandOrControl+I', () => {
-      // ... old handler code removed ...
-  // });
+  // --- Register Global Shortcut for Pasting --- 
+  const pasteShortcut = 'CommandOrControl+U';
+  const retPaste = globalShortcut.register(pasteShortcut, () => {
+      console.log(`[GlobalShortcut] ${pasteShortcut} pressed.`);
+      if (process.platform === 'darwin') { // macOS specific implementation
+          // AppleScript to simulate Cmd+C
+          const appleScriptCopy = 'tell application "System Events" to keystroke "c" using command down';
+          
+          // Use osascript to execute the AppleScript
+          exec(`osascript -e '${appleScriptCopy}'`, (error, stdout, stderr) => {
+              if (error) {
+                  console.error(`[GlobalShortcut] osascript error simulating copy: ${error.message}`);
+                  return;
+              }
+              if (stderr) {
+                  console.error(`[GlobalShortcut] osascript stderr simulating copy: ${stderr}`);
+                  // Continue anyway, maybe copy still worked
+              }
+              
+              // Introduce a tiny delay to allow the clipboard to update
+              setTimeout(() => {
+                  if (mainWindow && !mainWindow.isDestroyed()) {
+                      const selectedText = clipboard.readText(); // Read the result of the Cmd+C
+                      if (selectedText) {
+                          console.log('[IPC] Sending set-selected-text-context with selected text');
+                          mainWindow.webContents.send('set-selected-text-context', selectedText);
+                      } else {
+                          console.log('[GlobalShortcut] Clipboard empty after simulated copy, likely no text selected.');
+                      }
+                  } else {
+                     console.warn(`[GlobalShortcut] ${pasteShortcut} - mainWindow not available after copy simulation.`);
+                  }
+              }, 100); // 100ms delay - adjust if needed
+          });
+      } else { // Fallback for non-macOS (optional - could just do nothing)
+         console.warn(`[GlobalShortcut] ${pasteShortcut} - Get selected text only implemented for macOS.`);
+         // Optionally, fall back to standard clipboard paste on other OSes
+         // if (mainWindow && !mainWindow.isDestroyed()) {
+         //     const clipboardText = clipboard.readText();
+         //     if (clipboardText) {
+         //         console.log('[IPC] Sending paste-from-clipboard (non-macOS fallback)');
+         //         mainWindow.webContents.send('paste-from-clipboard', clipboardText);
+         //     }
+         // }
+      }
+  });
 
-  // if (!ret) {
-  //     console.error('[GlobalShortcut] Registration failed for CommandOrControl+I');
-  // } else {
-  //     console.log('[GlobalShortcut] CommandOrControl+I registered successfully');
-  // }
-  // --- End Global Shortcut ---
+  if (!retPaste) {
+      console.error(`[GlobalShortcut] Registration failed for ${pasteShortcut}`);
+  } else {
+      console.log(`[GlobalShortcut] ${pasteShortcut} registered successfully`);
+  }
+  // --- End Paste Global Shortcut ---
 
-  ipcMain.on('send-message', async (event, { text, includeScreenshot }: { text: string, includeScreenshot: boolean }) => {
-    console.log(`[IPC] Received send-message: '${text}', Include Screenshot: ${includeScreenshot}`);
+  ipcMain.on('send-message', async (event, { text, includeScreenshot, contextText }: { text: string, includeScreenshot: boolean, contextText: string | null }) => {
+    console.log(`[IPC] Received send-message: '${text}', Include Screenshot: ${includeScreenshot}, Context Provided: ${!!contextText}`);
     
-    // 1. Send user message back to UI immediately
+    // 1. Send user message back to UI immediately (without context, UI handles display)
     if (mainWindow) {
       mainWindow.webContents.send('message-from-main', { text: text, isUser: true });
     } else {
@@ -386,7 +427,8 @@ app.on('ready', () => {
         ws.send(JSON.stringify({ 
           type: 'user_message', 
           text: text, 
-          screenshot_data_url: screenshotDataUrl // Send null if not captured
+          screenshot_data_url: screenshotDataUrl, // Send null if not captured
+          context_text: contextText // Include the context text
         }));
       } catch (error) {
          console.error('[WebSocket Send] Error sending data:', error);
@@ -442,6 +484,29 @@ app.on('ready', () => {
       }
   });
   // --- End user-response listener ---
+
+  // --- Listener for setting LLM Model --- 
+  ipcMain.on('set-llm-model', (event, modelName: string) => {
+    console.log(`[IPC] Received set-llm-model request: ${modelName}`);
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      try {
+        ws.send(JSON.stringify({ 
+          type: 'set_llm_model', 
+          model_name: modelName
+        }));
+        console.log("[WebSocket Send] Sent set_llm_model to backend.");
+      } catch (error) {
+         console.error('[WebSocket Send] Error sending set_llm_model:', error);
+         // Optionally notify renderer of error
+         // mainWindow?.webContents.send('backend-status-message', { statusType: 'error', text: 'Failed to send model selection to backend.' });
+      }
+    } else {
+      console.error("[WebSocket Send] Cannot send set_llm_model, WebSocket not connected.");
+      // Optionally notify renderer
+      // mainWindow?.webContents.send('backend-status-message', { statusType: 'error', text: 'Cannot send model selection, connection lost.' });
+    }
+  });
+  // --- End set-llm-model listener ---
 });
 
 // --- Unregister Shortcut on Quit --- 
@@ -456,6 +521,12 @@ app.on('will-quit', () => {
   globalShortcut.unregister(sendShortcut);
   console.log(`[GlobalShortcut] ${sendShortcut} unregistered.`);
   // --- End Unregister Send Shortcut ---
+
+  // --- Unregister Paste Shortcut ---
+  const pasteShortcut = 'CommandOrControl+I';
+  globalShortcut.unregister(pasteShortcut);
+  console.log(`[GlobalShortcut] ${pasteShortcut} unregistered.`);
+  // --- End Unregister Paste Shortcut ---
 
   // Unregister all accelerators
   globalShortcut.unregisterAll(); // Keep this as a fallback
