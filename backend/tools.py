@@ -4,7 +4,7 @@ import os # For reading env vars
 from dotenv import load_dotenv # For reading env vars
 from tavily import TavilyClient # Import Tavily client
 from langchain_openai import ChatOpenAI # Import OpenAI client
-from browser_use import Agent # Import Browser Agent
+from browser_use import Agent, Browser, BrowserConfig
 
 # --- Load Env Vars and Initialize Clients ---
 load_dotenv()
@@ -130,7 +130,12 @@ async def execute_browser_task(task: str) -> str:
 
     try:
         # Instantiate and run the agent
-        agent = Agent(task=task, llm=llm)
+        browser = Browser(
+            config=BrowserConfig(
+                browser_binary_path='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',  # macOS path
+            )
+        )
+        agent = Agent(task=task, llm=llm, browser=browser)
         result = await agent.run()
         print(f"[Server Tool] Browser agent finished task: '{task}'")
         return str(result) # Ensure result is string
