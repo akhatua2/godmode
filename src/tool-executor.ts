@@ -267,62 +267,72 @@ async function handleEditFile(ws: WebSocket | null, mainWindow: BrowserWindow | 
 async function handlePasteAtCursor(ws: WebSocket | null, mainWindow: BrowserWindow | null, pendingCall: ToolCall) {
     const toolCallId = pendingCall.id;
     let contentToPaste = '';
-    let originalClipboardContent = ''; // Variable to store original clipboard content
 
     try {
         const rawArgs = pendingCall.function.arguments;
-        console.log(`[Tool Executor DEBUG] Raw arguments for paste_at_cursor: ${rawArgs}`);
         const args = JSON.parse(rawArgs);
-        console.log(`[Tool Executor DEBUG] Parsed arguments for paste_at_cursor:`, args);
-
         contentToPaste = args.content_to_paste;
+        // *** LOG 1: Content intended by LLM ***
+        console.log(`[Tool Executor LOG 1 (${toolCallId})] Content to paste from LLM: "${contentToPaste.substring(0, 50)}..."`);
 
         if (typeof contentToPaste !== 'string') {
             throw new Error('Invalid content_to_paste argument.');
         }
 
-        // 1. Save original clipboard content
-        originalClipboardContent = clipboard.readText();
-        console.log('[Tool Executor] Original clipboard content saved.');
-
-        // 2. Write new content to clipboard
+        // Step 2: Write new content to clipboard
         clipboard.writeText(contentToPaste);
-        console.log('[Tool Executor] New content written to clipboard.');
+        // *** LOG 2: Clipboard content AFTER writing LLM content ***
+        const clipboardAfterWrite = clipboard.readText();
+        console.log(`[Tool Executor LOG 2 (${toolCallId})] Clipboard content AFTER writing LLM content: "${clipboardAfterWrite.substring(0, 50)}..."`);
 
-        // 3. Simulate Paste (macOS specific using AppleScript)
+        // Step 3: Simulate Paste
         const appleScriptCommand = `osascript -e 'tell application "System Events" to keystroke "v" using command down'`;
 
-        console.log('[Tool Executor] Executing AppleScript to simulate paste...');
-        exec(appleScriptCommand, (error, stdout, stderr) => {
-            // --- Callback Start ---
-            let operationSucceeded = true; // Assume success initially
-            let resultMessage = '';
+        // *** LOG 3: Clipboard content BEFORE simulating paste ***
+        const clipboardBeforePaste = clipboard.readText();
+        console.log(`[Tool Executor LOG 3 (${toolCallId})] Clipboard content BEFORE simulating paste: "${clipboardBeforePaste.substring(0, 50)}..."`);
+        
+        // Introduce a delay before simulating paste
+        setTimeout(() => {
+          console.log(`[Tool Executor (${toolCallId})] Executing AppleScript after delay...`);
+          
+          exec(appleScriptCommand, (error, stdout, stderr) => {
+              // --- Callback Start ---
+              // *** LOG 4: Clipboard content IMMEDIATELY inside callback ***
+              const clipboardInsideCallback = clipboard.readText();
+              console.log(`[Tool Executor LOG 4 (${toolCallId})] Clipboard content START of paste callback: "${clipboardInsideCallback.substring(0, 50)}..."`);
+              
+              let operationSucceeded = true;
+              let resultMessage = '';
 
-            if (error) {
-                operationSucceeded = false;
-                console.error(`[Tool Executor] AppleScript paste error (${toolCallId}): ${error.message}`);
-                resultMessage = `Paste Error: Failed to simulate paste action - ${error.message}`;
-            } else {
-                if (stderr) {
-                     console.warn(`[Tool Executor] AppleScript paste stderr (${toolCallId}): ${stderr}`);
-                     // Might not be a fatal error, but good to know
-                }
-                resultMessage = `Successfully pasted content.`;
-                console.log(`[Tool Executor] ${resultMessage}`);
-            }
+              if (error) {
+                  operationSucceeded = false;
+                  console.error(`[Tool Executor] AppleScript paste error (${toolCallId}): ${error.message}`);
+                  resultMessage = `Paste Error: Failed to simulate paste action - ${error.message}`;
+              } else {
+                  if (stderr) {
+                       console.warn(`[Tool Executor] AppleScript paste stderr (${toolCallId}): ${stderr}`);
+                  }
+                  resultMessage = `Successfully pasted content.`;
+                  console.log(`[Tool Executor] ${resultMessage}`);
+              }
 
-            // Send result (success or error) back to backend
-            sendToolResultToBackend(ws, mainWindow, toolCallId, resultMessage);
-            // Send result to frontend
-            if (mainWindow) {
-                mainWindow.webContents.send('command-output-from-main', resultMessage);
-            }
+              // Send result (success or error) back to backend
+              sendToolResultToBackend(ws, mainWindow, toolCallId, resultMessage);
+              // Send result to frontend - REMOVE SUCCESS MESSAGE
+              /*
+              if (mainWindow && operationSucceeded) { // Only remove success case
+                  mainWindow.webContents.send('command-output-from-main', resultMessage);
+              }
+              */
+             // Still send errors to frontend if needed
+             if (mainWindow && !operationSucceeded) {
+                 mainWindow.webContents.send('command-output-from-main', resultMessage);
+             }
 
-            // 4. Restore original clipboard content AFTER sending results
-            clipboard.writeText(originalClipboardContent);
-            console.log('[Tool Executor] Original clipboard content restored.');
-            // --- Callback End ---
-        });
+              // --- Callback End ---
+          });
+        }, 150); // Delay in milliseconds (adjust if needed)
 
     } catch (error: any) {
         console.error(`[Tool Executor] Error handling paste_at_cursor for ${toolCallId}:`, error);
@@ -330,11 +340,6 @@ async function handlePasteAtCursor(ws: WebSocket | null, mainWindow: BrowserWind
         sendToolResultToBackend(ws, mainWindow, toolCallId, errorMessage);
          if (mainWindow) {
             mainWindow.webContents.send('command-output-from-main', errorMessage);
-        }
-        // Restore clipboard even if the initial setup fails (e.g., argument parsing)
-        if (originalClipboardContent) { // Only restore if it was read successfully
-            clipboard.writeText(originalClipboardContent);
-            console.log('[Tool Executor] Original clipboard content restored after setup error.');
         }
     }
 }
