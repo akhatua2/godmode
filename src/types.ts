@@ -1,42 +1,60 @@
 // src/types.ts
 import { IpcRendererEvent } from 'electron'; // Import IpcRendererEvent
 
-// Define the structure for a message object used in App.tsx
-export interface Message {
-    text: string;
-    isUser: boolean;
-    isImage?: boolean; // Optional flag for image messages
-    isToolRequest?: boolean; // Flag for tool request messages
-    isCommandOutput?: boolean; // Flag for command output messages
-    toolCalls?: ToolCall[]; // Optional array of tool calls for tool request messages
-}
-
-// Define the structure for props passed to ChatMessage component
-export interface ChatMessageProps {
-  text: string;
-  isUser: boolean;
-  isImage?: boolean;
-  isToolRequest?: boolean;
-  isCommandOutput?: boolean; 
-  toolCalls?: ToolCall[];
-  onToolResponse?: (toolCallId: string, decision: 'approved' | 'denied', result?: string) => void;
-  isResponded?: boolean; // Add this prop for button visibility
-}
-
-// Define the structure for a single tool call (matching OpenAI format)
+// Define the structure for tool call objects
 export interface ToolCall {
     id: string;
     type: 'function';
     function: {
-        name: string;
-        arguments: string; // Arguments are initially a string (JSON)
+      name: string;
+      arguments: string; // Arguments are initially a JSON string
     };
+  }
+
+// Define the structure for Agent Step Update data
+export interface AgentStepUpdateData {
+    thoughts?: string;
+    action?: string;
+    url?: string;
+}
+  
+// Define the structure for a message object
+export interface Message {
+    text: string; // Holds text or screenshot data URL
+    isUser: boolean;
+    isImage?: boolean; // Flag for screenshot messages
+    isToolRequest?: boolean; // Flag for tool request messages
+    isCommandOutput?: boolean; // Flag for direct command output
+    toolCalls?: ToolCall[]; // Array of tool calls if it's a request
+    isAgentUpdate?: boolean; // Flag for agent status update messages
+    isAgentResponse?: boolean; // Flag for user message sent in response to agent
+    agentUpdateData?: AgentStepUpdateData; // Data for agent status updates
+}
+  
+// Define the props for the ChatMessage component, including tool calls
+export interface ChatMessageProps {
+    text: string;
+    isUser: boolean;
+    isImage?: boolean;
+    isToolRequest?: boolean;
+    isCommandOutput?: boolean;
+    toolCalls?: ToolCall[];
+    onToolResponse?: (toolCallId: string, decision: 'approved' | 'denied', result?: string) => void;
+    isResponded: boolean; // Track if user responded to this specific tool request
+    isAgentUpdate?: boolean;
+    isAgentResponse?: boolean;
+    agentUpdateData?: AgentStepUpdateData;
 }
 
 // Define the structure for sending a tool result back to main
 export interface ToolResultPayload {
     type: 'tool_result';
     results: Array<{ tool_call_id: string; content: string; }>;
+}
+
+// Define the structure for cost update messages
+export interface CostUpdatePayload {
+    total_cost: number;
 }
 
 // Interface for the API exposed by the preload script
@@ -57,6 +75,12 @@ export interface IElectronAPI {
   onCommandOutputFromMain: (callback: (event: IpcRendererEvent, output: string) => void) => void;
   // Function to send tool results (or denial) back to the main process
   sendToolResponse: (toolCallId: string, decision: 'approved' | 'denied', result?: string) => void;
+  // --- Agent Interaction API --- 
+  onAgentQuestion: (callback: (event: IpcRendererEvent, data: { question: string; request_id: string }) => void) => void;
+  onAgentStepUpdate: (callback: (event: IpcRendererEvent, data: AgentStepUpdateData) => void) => void;
+  sendUserResponse: (requestId: string, answer: string) => void;
+  // --- Cost Update Listener --- 
+  onCostUpdate: (callback: (event: IpcRendererEvent, payload: CostUpdatePayload) => void) => void;
 }
 
 // Interface for the cleanup functions exposed by the preload script
@@ -73,6 +97,11 @@ export interface ICleanupAPI {
     removeTerminateRequestListener: () => void;
     // Remover for command output
     removeCommandOutputListener: () => void;
+    // --- Agent Interaction Cleanup --- 
+    removeAgentQuestionListener: () => void;
+    removeAgentStepUpdateListener: () => void;
+    // --- Cost Update Cleanup --- 
+    removeCostUpdateListener: () => void;
 }
 
 // Extend the Window interface to include our exposed APIs

@@ -1,10 +1,10 @@
-import { app, BrowserWindow, ipcMain, desktopCapturer, screen } from 'electron';
+import { app, BrowserWindow, ipcMain, desktopCapturer, screen, globalShortcut, clipboard } from 'electron';
 import path from 'node:path';
 import * as Path from 'node:path';
 import WebSocket from 'ws';
 // Import child_process for command execution (we'll use it later)
 import { exec } from 'node:child_process';
-import type { ToolCall } from './types'; // Import ToolCall type for storage
+import type { ToolCall, CostUpdatePayload } from './types'; // Import ToolCall type for storage
 import { executeTool } from './tool-executor'; // Import the executor function
 // Use ESM import for electron-squirrel-startup
 import SquirrelStartup from 'electron-squirrel-startup';
@@ -77,32 +77,46 @@ function connectWebSocket() {
               break;
 
           case 'error':
-              // Handle errors sent explicitly from backend
+          case 'warning': // Treat warnings like errors for UI display
+              // Handle errors/warnings sent explicitly from backend
               isStreaming = false; // Stop streaming if an error occurs
-              console.error('[WebSocket] Received backend error:', messageData.content);
-              mainWindow.webContents.send('message-from-main', { text: `[Backend Error: ${messageData.content}]`, isUser: false });
+              console.error(`[WebSocket] Received backend ${messageType}:`, messageData.content);
+              // Use a specific message type for the UI
+              mainWindow.webContents.send('backend-status-message', { statusType: messageType, text: messageData.content });
               break;
               
           case 'tool_call_request': // Specifically for run_bash_command now
-              isStreaming = false; // Stop any active text streaming
-              console.log('[WebSocket] Received tool_call_request:', messageData.tool_calls);
-              const receivedToolCalls = messageData.tool_calls;
-              if (receivedToolCalls && Array.isArray(receivedToolCalls)) {
-                  // Store pending calls before forwarding
-                  receivedToolCalls.forEach((call: ToolCall) => {
-                      if (call.id && call.type === 'function') { // Basic validation
-                          pendingToolCalls.set(call.id, call);
-                          console.log(`[Main] Stored pending tool call: ${call.id}`);
-                      }
-                  });
-                  // Forward the request to the renderer process
-                  console.log('[IPC] Sending tool-call-request-from-main');
-                  mainWindow.webContents.send('tool-call-request-from-main', receivedToolCalls);
-              } else {
-                  console.error('[WebSocket Handler] Invalid tool_call_request format received.');
-                  mainWindow.webContents.send('message-from-main', { text: '[Internal Error: Invalid tool request format]', isUser: false });
-              }
-              break;    
+               isStreaming = false; // Stop any active text streaming
+               console.log('[WebSocket] Received tool_call_request:', messageData.tool_calls);
+               const receivedToolCalls: ToolCall[] = messageData.tool_calls;
+               if (receivedToolCalls && Array.isArray(receivedToolCalls)) {
+                   receivedToolCalls.forEach((call: ToolCall) => {
+                       if (call.id && call.type === 'function' && call.function?.name) { // Basic validation
+                           // --- Auto-execute paste_at_cursor --- 
+                           if (call.function.name === 'paste_at_cursor') {
+                               console.log(`[Main] Auto-executing paste_at_cursor: ${call.id}`);
+                               // Directly execute without asking user
+                               executeTool(ws, mainWindow, call, 'approved'); 
+                           } else {
+                               // --- Store other client-side tools for approval --- 
+                              pendingToolCalls.set(call.id, call);
+                              console.log(`[Main] Stored pending tool call for approval: ${call.id} (${call.function.name})`);
+                              // Forward the request to the renderer process for approval
+                               console.log('[IPC] Sending tool-call-request-from-main for approval');
+                               mainWindow?.webContents.send('tool-call-request-from-main', [call]); // Send only the one needing approval
+                           }
+                       } else {
+                           console.error('[Main] Invalid tool call format in received list:', call);
+                           pendingToolCalls.set(call.id, call);
+                           console.log(`[Main] Stored pending tool call: ${call.id}`);
+                       }
+                   });
+                   // Note: Forwarding to renderer now happens inside the loop for tools *requiring* approval.
+               } else {
+                   console.error('[WebSocket Handler] Invalid tool_call_request format received.');
+                   mainWindow.webContents.send('message-from-main', { text: '[Internal Error: Invalid tool request format]', isUser: false });
+               }
+               break;    
 
           // --- Handle ask_user and terminate --- 
           case 'ask_user_request':
@@ -120,6 +134,30 @@ function connectWebSocket() {
               // Optionally, you might want to close the websocket or disable input here
               break;
           // --- End ask_user / terminate handling ---
+
+          // --- Handle Agent Updates --- 
+          case 'agent_question':
+                isStreaming = false; // Stop any text stream
+                const questionData = { question: messageData.question, request_id: messageData.request_id };
+                console.log(`[IPC] Sending agent-question-from-main: ${questionData.request_id}`);
+                mainWindow.webContents.send('agent-question-from-main', questionData);
+                break;
+
+            case 'agent_step_update':
+                // Don't change isStreaming for step updates, they happen during agent processing
+                const updateData = messageData.data; // Should contain thoughts, action, url
+                console.log('[IPC] Sending agent-step-update-from-main');
+                mainWindow.webContents.send('agent-step-update-from-main', updateData);
+                break;
+          // --- End Agent Update Handling ---
+
+          // --- Handle Cost Update --- 
+          case 'cost_update':
+                const costPayload: CostUpdatePayload = { total_cost: messageData.total_cost };
+                console.log(`[IPC] Sending cost-update-from-main: $${costPayload.total_cost.toFixed(6)}`);
+                mainWindow.webContents.send('cost-update-from-main', costPayload);
+                break;
+          // --- End Cost Update Handling ---
 
           default:
              // Handle potential older format or unexpected messages gracefully
@@ -216,6 +254,19 @@ app.on('ready', () => {
   createWindow();
   connectWebSocket();
 
+  // --- Register Global Shortcut --- 
+  // Feature removed: CommandOrControl+I for paste
+  // const ret = globalShortcut.register('CommandOrControl+I', () => {
+      // ... old handler code removed ...
+  // });
+
+  // if (!ret) {
+  //     console.error('[GlobalShortcut] Registration failed for CommandOrControl+I');
+  // } else {
+  //     console.log('[GlobalShortcut] CommandOrControl+I registered successfully');
+  // }
+  // --- End Global Shortcut ---
+
   ipcMain.on('send-message', async (event, { text, includeScreenshot }: { text: string, includeScreenshot: boolean }) => {
     console.log(`[IPC] Received send-message: '${text}', Include Screenshot: ${includeScreenshot}`);
     
@@ -246,6 +297,34 @@ app.on('ready', () => {
                     const pngBuffer = primarySource.thumbnail.toPNG(); 
                     screenshotDataUrl = `data:image/png;base64,${pngBuffer.toString('base64')}`;
                     console.log('[IPC] Screenshot captured (window was hidden).');
+                    // --- Resize the image --- 
+                    const originalImage = primarySource.thumbnail;
+                    const originalSize = originalImage.getSize();
+                    const maxDimension = 1024; // Max width or height
+
+                    let newWidth, newHeight;
+                    if (originalSize.width > originalSize.height) {
+                        newWidth = Math.min(originalSize.width, maxDimension);
+                        newHeight = Math.round(newWidth / originalSize.width * originalSize.height);
+                    } else {
+                        newHeight = Math.min(originalSize.height, maxDimension);
+                        newWidth = Math.round(newHeight / originalSize.height * originalSize.width);
+                    }
+
+                    // Ensure dimensions are at least 1x1
+                    newWidth = Math.max(1, newWidth);
+                    newHeight = Math.max(1, newHeight);
+
+                    console.log(`[IPC] Resizing screenshot from ${originalSize.width}x${originalSize.height} to ${newWidth}x${newHeight}`);
+
+                    // Resize (quality 'good' is default)
+                    const resizedImage = originalImage.resize({ width: newWidth, height: newHeight, quality: 'good' });
+                    
+                    // Encode the *resized* image
+                    const resizedPngBuffer = resizedImage.toPNG(); 
+                    screenshotDataUrl = `data:image/png;base64,${resizedPngBuffer.toString('base64')}`;
+                    console.log('[IPC] Resized screenshot captured.');
+                    // --- End Resize --- 
                     // Send screenshot back to UI immediately (optional to do it here)
                     // mainWindow.webContents.send('message-from-main', { text: screenshotDataUrl, isUser: false, isImage: true });
                 } else {
@@ -320,6 +399,42 @@ app.on('ready', () => {
       // Use the external executor function
       executeTool(ws, mainWindow, pendingCall, decision);
   });
+
+  // --- Listener for user response to agent question ---
+  ipcMain.on('user-response', (event, { request_id, answer }: { request_id: string, answer: string }) => {
+      console.log(`[IPC] Received user-response for request_id: ${request_id}`);
+      if (ws && ws.readyState === WebSocket.OPEN) {
+          try {
+              ws.send(JSON.stringify({
+                  type: 'user_response',
+                  request_id: request_id,
+                  answer: answer
+              }));
+              console.log('[WebSocket Send] Sent user_response to backend.');
+              // Optionally send a confirmation back to UI that the response was sent
+              // mainWindow?.webContents.send('message-from-main', { text: answer, isUser: true, isAgentResponse: true });
+          } catch (error) {
+              console.error('[WebSocket Send] Error sending user_response:', error);
+              mainWindow?.webContents.send('backend-status-message', { statusType: 'error', text: 'Failed to send response to backend.' });
+          }
+      } else {
+          console.error('[WebSocket Send] Cannot send user_response, WebSocket not connected.');
+          mainWindow?.webContents.send('backend-status-message', { statusType: 'error', text: 'Cannot send response, connection lost.' });
+      }
+  });
+  // --- End user-response listener ---
+});
+
+// --- Unregister Shortcut on Quit --- 
+app.on('will-quit', () => {
+  // Unregister a specific accelerator
+  // Feature removed: CommandOrControl+I for paste
+  // globalShortcut.unregister('CommandOrControl+I');
+  // console.log('[GlobalShortcut] CommandOrControl+I unregistered.');
+
+  // Unregister all accelerators
+  globalShortcut.unregisterAll();
+  console.log('[GlobalShortcut] All shortcuts unregistered.');
 });
 
 // Quit when all windows are closed, except on macOS. There, it's common

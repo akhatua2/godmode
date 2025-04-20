@@ -4,7 +4,13 @@ import { ChatInput } from './ChatInput'; // Import the new component
 import { ChatMessage } from './ChatMessage'; // Import the new message component
 
 // Import the type definition for cleaner code
-import type { Message, ChatMessageProps, ToolCall } from './types';
+import type { Message, ChatMessageProps, ToolCall, AgentStepUpdateData, CostUpdatePayload } from './types';
+
+// Interface for the pending question state
+interface PendingQuestion {
+  question: string;
+  requestId: string;
+}
 
 function App() {
   // Update state to hold an array of Message objects
@@ -18,6 +24,16 @@ function App() {
   const [respondedToolCallIds, setRespondedToolCallIds] = useState<Set<string>>(new Set());
   // Ref to scroll to bottom
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // --- New State for Agent Interaction ---
+  const [pendingQuestion, setPendingQuestion] = useState<PendingQuestion | null>(null);
+  const [agentAnswerInput, setAgentAnswerInput] = useState(''); // Input for agent's question
+  // const [isAgentThinking, setIsAgentThinking] = useState(false); // Can use isProcessing for now
+  // --- End New State ---
+
+  // --- State for Session Cost --- 
+  const [currentSessionCost, setCurrentSessionCost] = useState<number>(0.0);
+  // --- End Cost State ---
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -137,7 +153,50 @@ function App() {
     };
     // --- End command output listener ---
 
+    // --- Register Agent Listeners --- 
+    const handleAgentQuestion = (event: Electron.IpcRendererEvent, data: { question: string; request_id: string }) => {
+        console.log('App: Agent question received:', data);
+        setIsProcessing(false); // Agent is waiting
+        setIsBotStreaming(false);
+        // Add the question as a regular bot message
+        setMessages(prev => [...prev, { text: data.question, isUser: false }]);
+        // Set the pending question state to show the input
+        setPendingQuestion({ question: data.question, requestId: data.request_id });
+    };
+    
+    const handleAgentStepUpdate = (event: Electron.IpcRendererEvent, data: AgentStepUpdateData) => {
+        console.log('App: Agent step update received:', data);
+        // Add a new message with the update data
+        setMessages(prev => [
+            ...prev,
+            {
+                text: "Agent Update", // Placeholder, not shown
+                isUser: false,
+                isAgentUpdate: true,
+                agentUpdateData: data
+            }
+        ]);
+        // Keep processing indicator active while agent is working
+        setIsProcessing(true);
+    };
+    // --- End Agent Listeners --- 
+
+    // --- Register Cost Listener --- 
+    const handleCostUpdate = (event: Electron.IpcRendererEvent, payload: CostUpdatePayload) => {
+        console.log('App: Cost update received:', payload);
+        setCurrentSessionCost(payload.total_cost); 
+    };
+    // --- End Cost Listener --- 
+
     // Set up the listeners using the exposed API
+    // Feature removed: CommandOrControl+I paste
+    // const handleGlobalPaste = (event: Electron.IpcRendererEvent, content: string) => {
+      // console.log("[App] Received paste via global shortcut.");
+      // setInputValue(prev => prev + content); // Append pasted content
+      // Optionally, focus the textarea after paste
+      // chatInputRef.current?.focus(); // Requires passing a ref to ChatInput
+    // };
+
     window.electronAPI.onMessageFromMain(handleNewMessage);
     window.electronAPI.onStreamStart(handleStreamStart);
     window.electronAPI.onStreamChunk(handleStreamChunk);
@@ -146,6 +205,11 @@ function App() {
     window.electronAPI.onAskUserRequestFromMain(handleAskUserRequest); // ask_user
     window.electronAPI.onTerminateRequestFromMain(handleTerminateRequest); // terminate
     window.electronAPI.onCommandOutputFromMain(handleCommandOutput); // command output
+    window.electronAPI.onAgentQuestion(handleAgentQuestion); // agent_question
+    window.electronAPI.onAgentStepUpdate(handleAgentStepUpdate); // agent_step_update
+    window.electronAPI.onCostUpdate(handleCostUpdate);
+    // Feature removed: CommandOrControl+I paste
+    // window.electronAPI.onPasteFromGlobalShortcut(handleGlobalPaste); // Add listener
 
     // Cleanup function to remove the listeners when the component unmounts
     return () => {
@@ -158,8 +222,38 @@ function App() {
       window.cleanup?.removeAskUserRequestListener(); 
       window.cleanup?.removeTerminateRequestListener(); 
       window.cleanup?.removeCommandOutputListener(); // Add cleanup
+      // --- Cleanup new agent listeners --- 
+      window.cleanup?.removeAgentQuestionListener();
+      window.cleanup?.removeAgentStepUpdateListener();
+      // --- End Cleanup ---
+      window.cleanup?.removeCostUpdateListener();
+      // Feature removed: CommandOrControl+I paste
+      // window.cleanup?.removePasteFromGlobalShortcutListener(); // Add cleanup
     };
   }, []); // Empty dependency array means this runs once on mount
+
+  // --- Handler for submitting response to agent's question --- 
+  const handleAgentAnswerSubmit = (event?: React.FormEvent<HTMLFormElement>) => {
+    event?.preventDefault(); // Prevent default form submission if used
+    if (!pendingQuestion || !agentAnswerInput.trim()) return;
+
+    console.log(`[App] Sending user response for request_id: ${pendingQuestion.requestId}`);
+
+    // Send the response back via IPC
+    window.electronAPI.sendUserResponse(pendingQuestion.requestId, agentAnswerInput);
+
+    // Optionally add user's response to chat history for clarity
+    setMessages(prev => [
+        ...prev, 
+        { text: agentAnswerInput, isUser: true, isAgentResponse: true } // Add a flag
+    ]);
+
+    // Clear the pending question state and the input field
+    setPendingQuestion(null);
+    setAgentAnswerInput('');
+    setIsProcessing(true); // Assume backend will process immediately
+  };
+  // --- End Handler ---
 
   return (
     <div className="app-container">
@@ -180,7 +274,11 @@ function App() {
               isCommandOutput: msg.isCommandOutput,
               toolCalls: msg.toolCalls,
               onToolResponse: handleToolResponse,
-              isResponded: isResponded
+              isResponded: isResponded,
+              // --- Pass agent update data --- 
+              isAgentUpdate: msg.isAgentUpdate,
+              agentUpdateData: msg.agentUpdateData
+              // --- End Pass --- 
           };
           
           return (
@@ -192,8 +290,27 @@ function App() {
       <ChatInput 
         inputValue={inputValue}
         onInputChange={handleInputChange}
-        isProcessing={isProcessing || isBotStreaming} 
+        // Disable main input if processing OR if waiting for user response to agent
+        isProcessing={isProcessing || isBotStreaming || !!pendingQuestion} 
+        sessionCost={currentSessionCost}
       />
+      {/* --- Conditional Input for Agent Question --- */}
+      {pendingQuestion && (
+        <div className="agent-question-input-area">
+          <form onSubmit={handleAgentAnswerSubmit} className="agent-question-form">
+            <input 
+              type="text"
+              value={agentAnswerInput}
+              onChange={(e) => setAgentAnswerInput(e.target.value)}
+              placeholder={`Reply to agent...`}
+              className="agent-question-input"
+              autoFocus // Focus on the input when it appears
+            />
+            <button type="submit" className="agent-question-submit-button">Send</button>
+          </form>
+        </div>
+      )}
+      {/* --- End Conditional Input --- */}
     </div>
   );
 }

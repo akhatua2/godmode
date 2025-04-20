@@ -1,6 +1,24 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import type { ToolCall } from './types'; // Import ToolCall type
+import type { ToolCall, AgentStepUpdateData } from './types'; // Import ToolCall type and AgentStepUpdateData
+import './ChatMessage.css'; // <-- Import the new CSS file
+
+// --- Helper Function to Extract Minimal Status ---
+function extractMinimalStatus(thoughts: string | undefined): string | null {
+    if (!thoughts) return null;
+
+    // 1. Extract content within memory='...'
+    const memoryMatch = thoughts.match(/memory='([^\']*)'/);
+    let memoryContent = memoryMatch ? memoryMatch[1] : null;
+
+    if (!memoryContent) return null; // No memory content found
+
+    // 2. Remove "At step x/y. " prefix
+    memoryContent = memoryContent.replace(/^At step \d+\/\d+\.\s*/, '');
+
+    return memoryContent.trim() || null; // Return trimmed content or null if empty
+}
+// --- End Helper Function ---
 
 interface ChatMessageProps {
   text: string;
@@ -11,6 +29,9 @@ interface ChatMessageProps {
   toolCalls?: ToolCall[];
   onToolResponse?: (toolCallId: string, decision: 'approved' | 'denied', result?: string) => void;
   isResponded: boolean;
+  isAgentUpdate?: boolean;
+  isAgentResponse?: boolean;
+  agentUpdateData?: AgentStepUpdateData;
 }
 
 export const ChatMessage: React.FC<ChatMessageProps> = ({ 
@@ -21,7 +42,10 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
     isCommandOutput, 
     toolCalls, 
     onToolResponse,
-    isResponded
+    isResponded,
+    isAgentUpdate,
+    isAgentResponse,
+    agentUpdateData
 }) => {
   // Determine the CSS class based on the message type
   const messageClass = isUser 
@@ -30,6 +54,8 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
           ? 'message-item message-tool-request' 
           : isCommandOutput
               ? 'message-item message-command-output'
+              : isAgentUpdate
+                  ? 'message-item message-agent-update'
               : 'message-item message-bot';
           
   // State to track if the image is expanded
@@ -142,6 +168,15 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
         ) : isUser ? (
           // If it's a user message, render text as usual
           text
+        ) : isAgentUpdate && agentUpdateData ? (
+           // --- Render Minimal Agent Status --- 
+           (() => {
+               const status = extractMinimalStatus(agentUpdateData.thoughts);
+               return status ? (
+                   <pre className="agent-status-text"><code>{status}</code></pre>
+               ) : null; // Render nothing if status can't be extracted
+           })()
+           // --- End Render Minimal Status --- 
         ) : (
           // If it's a bot message (and not an image), render using ReactMarkdown
           <ReactMarkdown>{text}</ReactMarkdown>

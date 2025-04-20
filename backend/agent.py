@@ -1,8 +1,6 @@
 import json
 import asyncio
-from typing import Optional, List, Dict, Any, AsyncGenerator, Tuple, TypedDict
-# Import AsyncOpenAI for type hinting
-from openai import AsyncOpenAI
+from typing import Optional, List, Dict, Any, AsyncGenerator, Tuple, TypedDict, Callable
 # Import Stream type for better hinting if needed (optional)
 from openai.types.chat import ChatCompletionChunk
 # ChoiceDeltaToolCall is used for type hinting the chunk, not for accumulation state
@@ -31,8 +29,7 @@ class ChatAgent:
     """A self-contained agent to manage chat history and interact with an LLM."""
 
     # Update type hint for client
-    def __init__(self, client: AsyncOpenAI, model_name: str = "gpt-4.1"):
-        self.client = client
+    def __init__(self, model_name: str = "gpt-4.1-mini"):
         self.model_name = model_name
         self.memory: List[MessageDict] = [] # Initialize memory as a list of dictionaries
         self.pending_ask_user_tool_call_id: Optional[str] = None # State for pending ask_user ID
@@ -46,7 +43,8 @@ class ChatAgent:
             "- terminate: End the current interaction or task when the goal is achieved, you are stuck, or the user asks to stop.\n\n"
             "- read_file: Read the content of a specific file on the user's machine (client-side execution).\n"
             "- edit_file: Replace the first occurrence of 'string_to_replace' with 'new_string' in the specified 'file_path' on the user's machine (client-side execution). Use with caution.\n"
-            "- browser_user: Perform a complex web browsing task based on a given objective using an autonomous agent. Use this for tasks requiring interaction with websites, filling forms, or synthesizing information from multiple pages (server-side execution).\n\n"
+            "- browser_user: Perform a complex web browsing task based on a given objective using an autonomous agent. Use this for tasks requiring interaction with websites, filling forms, or synthesizing information from multiple pages (server-side execution).\n"
+            "- paste_at_cursor: Pastes the provided text content at the current cursor location in the user's active application (client-side execution).\n\n"
             "Follow these steps:\n"
             "1. Understand the user's request based on their message and the screenshot context (if provided).\n"
             "2. Plan the steps needed. This might involve multiple tool uses (e.g., search the web, then run a command based on results).\n"
@@ -81,7 +79,7 @@ class ChatAgent:
         self.memory.append(message)
 
     # Refactored step method - handles one LLM call based on current memory
-    async def step(self) -> AsyncGenerator[str | Dict[str, Any], None]:
+    async def step(self, callbacks: Optional[List[Callable]] = None) -> AsyncGenerator[str | Dict[str, Any], None]:
         """Performs one step of interaction: gets LLM response and yields content/tool request."""
         print("[Agent] Executing agent step...")
         
@@ -90,10 +88,8 @@ class ChatAgent:
         print(f"[Agent DEBUG] LLM Input Messages (step):\n{json.dumps(self.memory, indent=2)}") # Keep debug log here
         
         response_stream = get_llm_response_stream(
-            client=self.client,
             model_name=self.model_name,
-            messages=self.memory
-            # Optionally pass temperature: temperature=0.8 
+            messages=self.memory,
         )
         # --- End LLM Client Call --- 
 
@@ -102,8 +98,17 @@ class ChatAgent:
         tool_calls_in_progress: Dict[int, Dict[str, Any]] = {} 
         finish_reason = None
         error_yielded = False # Flag to track if an error dict was yielded
+        captured_finish_reason = None # Explicitly capture finish_reason within the loop
+        extracted_cost = None # Variable to store cost tuple value
 
         async for chunk_or_error in response_stream:
+            # --- Check for final_cost tuple FIRST --- 
+            if isinstance(chunk_or_error, tuple) and chunk_or_error[0] == "final_cost":
+                extracted_cost = chunk_or_error[1] # Store the cost value
+                print(f"[Agent DEBUG] Received final_cost tuple from llm_client: {extracted_cost}")
+                continue # Consume the tuple, don't process as chunk
+            # --- End check ---
+
             # Check if the yielded item is an error dictionary
             if isinstance(chunk_or_error, dict) and chunk_or_error.get("type") == "error":
                 print(f"[Agent] Received error from LLM client: {chunk_or_error['content']}")
@@ -122,6 +127,9 @@ class ChatAgent:
             if not choice: continue 
 
             finish_reason = choice.finish_reason
+            if finish_reason:
+                captured_finish_reason = finish_reason # Capture it when it appears
+
             delta: ChoiceDelta | None = choice.delta
 
             if delta and delta.content:
@@ -161,7 +169,7 @@ class ChatAgent:
 
         # Handle finish reason ONLY if no error was yielded during streaming
         if not error_yielded:
-            if finish_reason == "tool_calls" and tool_calls_in_progress:
+            if captured_finish_reason == "tool_calls" and tool_calls_in_progress:
                 # Finalize tool calls from the accumulated dictionaries
                 final_tool_calls = list(tool_calls_in_progress.values()) 
                 # Basic validation
@@ -170,6 +178,10 @@ class ChatAgent:
                     if call.get("id") and call.get("type") == "function" and 
                        isinstance(call.get("function"), dict) and call["function"].get("name")
                 ]
+
+                # --- Debug log before yielding tool request --- 
+                print(f"[Agent DEBUG] Yielding tool call request: {valid_tool_calls}")
+                # --- End Debug log --- 
 
                 if valid_tool_calls:
                     print(f"[Agent] Detected tool calls: {[call['function']['name'] for call in valid_tool_calls]}")
@@ -183,7 +195,7 @@ class ChatAgent:
                      self.add_message_to_memory(role="assistant", content="[Agent Error: Inconsistent tool call state]")
                      yield {"type": "error", "content": "[Agent Error: Inconsistent tool call detected]"}
 
-            elif finish_reason == "stop":
+            elif captured_finish_reason == "stop":
                 print(f"[Agent] Finished normally (stop reason). Response length: {len(response_content)}")
                 # Normal stop, add the complete assistant response to memory
                 if response_content: 
@@ -195,16 +207,22 @@ class ChatAgent:
                     # Do we need to yield anything here? Main expects an 'end' signal later.
             else:
                 # Handle other finish reasons (length, content_filter, etc.) or incomplete streams
-                print(f"[Agent] Stream finished with unexpected reason: {finish_reason}")
+                print(f"[Agent] Stream finished with unexpected reason: {captured_finish_reason}")
                 # Add partial response to memory
                 if response_content:
-                     self.add_message_to_memory(role="assistant", content=response_content + f" [Incomplete Response: {finish_reason}]")
+                     self.add_message_to_memory(role="assistant", content=response_content + f" [Incomplete Response: {captured_finish_reason}]")
                 else:
-                     self.add_message_to_memory(role="assistant", content=f"[Agent Error: Stream ended unexpectedly. Reason: {finish_reason}]")
+                     self.add_message_to_memory(role="assistant", content=f"[Agent Error: Stream ended unexpectedly. Reason: {captured_finish_reason}]")
                 # Yield an error message/object
-                yield {"type": "error", "content": f"[Agent Error: Stream ended unexpectedly. Reason: {finish_reason}]"}
+                yield {"type": "error", "content": f"[Agent Error: Stream ended unexpectedly. Reason: {captured_finish_reason}]"}
         else:
              print("[Agent] Skipping final processing due to earlier error.")
+
+        # --- Yield the cost tuple at the very end if extracted --- 
+        if extracted_cost is not None:
+            print(f"[Agent DEBUG] Yielding final_cost tuple: {extracted_cost}")
+            yield ("final_cost", extracted_cost)
+        # --- End yield --- 
 
         print("[Agent] Step finished.")
 

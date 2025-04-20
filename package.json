@@ -39,11 +39,13 @@
   },
   "dependencies": {
     "@types/react-dom": "^19.1.2",
+    "@types/react-textarea-autosize": "^4.3.6",
     "@types/ws": "^8.18.1",
     "electron-squirrel-startup": "^1.0.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-markdown": "^10.1.0",
+    "react-textarea-autosize": "^8.5.9",
     "rehype-raw": "^7.0.0",
     "remark-gfm": "^4.0.1",
     "ws": "^8.18.1"

@@ -2,7 +2,11 @@
 // https://www.electronjs.org/docs/latest/tutorial/process-model#preload-scripts
 
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
-import type { Message, ToolCall } from './types'; // Import types
+import type { Message, ToolCall, AgentStepUpdateData, CostUpdatePayload } from './types'; // Import types
+
+// --- Define types for new messages (Optional but recommended) ---
+
+// --- End type definitions ---
 
 // Store listener functions to allow removal
 let messageListener: ((event: IpcRendererEvent, message: Message) => void) | null = null;
@@ -15,6 +19,14 @@ let askUserRequestListener: ((event: IpcRendererEvent, question: string) => void
 let terminateRequestListener: ((event: IpcRendererEvent, reason: string) => void) | null = null;
 // Add listener for command output
 let commandOutputListener: ((event: IpcRendererEvent, output: string) => void) | null = null;
+
+// --- New Listeners for Agent Interaction ---
+let agentQuestionListener: ((event: IpcRendererEvent, data: { question: string; request_id: string }) => void) | null = null;
+let agentStepUpdateListener: ((event: IpcRendererEvent, data: AgentStepUpdateData) => void) | null = null;
+// --- End New Listeners ---
+
+// --- Cost Update Listener --- 
+let costUpdateListener: ((event: IpcRendererEvent, payload: CostUpdatePayload) => void) | null = null;
 
 // --- electronAPI Definition ---
 const electronAPI = {
@@ -84,11 +96,49 @@ const electronAPI = {
   },
   // --- End command output listener ---
   
+  // --- New Listener Functions for Agent --- 
+  onAgentQuestion: (callback: (event: IpcRendererEvent, data: { question: string; request_id: string }) => void) => {
+      if (agentQuestionListener) ipcRenderer.removeListener('agent-question-from-main', agentQuestionListener);
+      agentQuestionListener = callback;
+      ipcRenderer.on('agent-question-from-main', agentQuestionListener); // Define channel name
+  },
+
+  onAgentStepUpdate: (callback: (event: IpcRendererEvent, data: AgentStepUpdateData) => void) => {
+      if (agentStepUpdateListener) ipcRenderer.removeListener('agent-step-update-from-main', agentStepUpdateListener);
+      agentStepUpdateListener = callback;
+      ipcRenderer.on('agent-step-update-from-main', agentStepUpdateListener); // Define channel name
+  },
+  // --- End New Listener Functions ---
+  
   // Function to send tool response back to main process
   sendToolResponse: (toolCallId: string, decision: 'approved' | 'denied', result?: string) => {
       console.log(`[Preload] Sending tool-response: ${toolCallId}, Decision: ${decision}`);
       ipcRenderer.send('tool-response', { toolCallId, decision, result });
-  }
+  },
+  
+  // --- Function to send user response to agent question --- 
+  sendUserResponse: (requestId: string, answer: string) => {
+      console.log(`[Preload] Sending user-response: ${requestId}`);
+      ipcRenderer.send('user-response', { request_id: requestId, answer: answer }); // Define channel name
+  },
+
+  // --- Cost Update Listener Setup ---
+  onCostUpdate: (callback: (event: IpcRendererEvent, payload: CostUpdatePayload) => void) => {
+      if (costUpdateListener) ipcRenderer.removeListener('cost-update-from-main', costUpdateListener);
+      costUpdateListener = callback;
+      ipcRenderer.on('cost-update-from-main', costUpdateListener);
+  },
+
+  // --- Global Paste Listener Setup ---
+  // Feature removed: CommandOrControl+I paste
+  // onPasteFromGlobalShortcut: (callback: (event: IpcRendererEvent, content: string) => void) => {
+      // Define a unique listener variable
+      // const globalPasteListener = (event: IpcRendererEvent, content: string) => callback(event, content);
+      // Remove listener logic might need adjustment if multiple listeners are intended,
+      // but for this case, we assume only one listener setup from App.tsx.
+      // ipcRenderer.removeAllListeners('paste-from-global-shortcut'); // Remove previous before adding
+      // ipcRenderer.on('paste-from-global-shortcut', globalPasteListener);
+  // }
 };
 
 // --- cleanup API Definition ---
@@ -144,8 +194,38 @@ const cleanupAPI = {
             ipcRenderer.removeListener('command-output-from-main', commandOutputListener);
             commandOutputListener = null;
         }
-    }
+    },
     // --- End command output remover ---
+
+    // --- New Remover Functions ---
+    removeAgentQuestionListener: () => {
+         if (agentQuestionListener) {
+              ipcRenderer.removeListener('agent-question-from-main', agentQuestionListener);
+              agentQuestionListener = null;
+         }
+    },
+    removeAgentStepUpdateListener: () => {
+         if (agentStepUpdateListener) {
+              ipcRenderer.removeListener('agent-step-update-from-main', agentStepUpdateListener);
+              agentStepUpdateListener = null;
+         }
+    },
+    // --- End New Remover Functions ---
+
+    // --- Cost Update Remover ---
+    removeCostUpdateListener: () => {
+        if (costUpdateListener) {
+            ipcRenderer.removeListener('cost-update-from-main', costUpdateListener);
+            costUpdateListener = null;
+        }
+    },
+    // --- Global Paste Remover ---
+    // Feature removed: CommandOrControl+I paste
+    // removePasteFromGlobalShortcutListener: () => {
+        // No specific listener variable stored, so remove all for this channel
+        // ipcRenderer.removeAllListeners('paste-from-global-shortcut');
+        // console.log("[Cleanup] Removed paste-from-global-shortcut listeners.")
+    // }
 };
 
 // --- Expose to Renderer --- 

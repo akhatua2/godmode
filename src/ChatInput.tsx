@@ -6,13 +6,15 @@ interface ChatInputProps {
   inputValue: string;
   isProcessing: boolean;
   onInputChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
+  sessionCost: number; // Add sessionCost prop
   // onSubmit?: () => void; // No longer needed as submit goes via IPC
 }
 
 export const ChatInput: React.FC<ChatInputProps> = ({ 
   inputValue, 
   isProcessing, 
-  onInputChange 
+  onInputChange, 
+  sessionCost // Destructure the prop
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   // State for the screenshot toggle, default to false
@@ -41,7 +43,10 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    // Check for Enter without Shift OR Cmd/Ctrl + Enter
+    if ((e.key === 'Enter' && !e.shiftKey) || 
+        (e.key === 'Enter' && (e.metaKey || e.ctrlKey)))
+    {
       e.preventDefault();
       handleSendMessage();
     }
@@ -83,6 +88,11 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           className="chat-input-textarea" // Use class from CSS (padding handled by CSS)
         />
         {/* Removed the bottom bar with checkbox */}
+
+        {/* Session Cost Display */}
+        <div className="session-cost-display">
+          Cost: ${sessionCost.toFixed(6)} 
+        </div>
       </div>
     </form>
   );

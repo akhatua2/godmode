@@ -5,6 +5,7 @@
   /* Can use flexbox to position button above textarea */
   display: flex;
   flex-direction: column;
+  position: relative; /* Needed for absolute positioning of cost */
 }
 
 .chat-input-textarea {
@@ -139,4 +140,17 @@ background-color: rgba(0, 255, 0, 0.2); /* Example: translucent green */
     margin: 0;
     padding: 0;
     background-color: transparent; /* Inherit from parent div */
+}
+
+/* Session Cost Display Styles */
+.session-cost-display {
+    position: absolute;
+    bottom: 4px; /* Adjust as needed */
+    left: 8px;  /* Adjust as needed */
+    font-size: 0.65rem; /* Very small font */
+    color: #888; /* Dim color */
+    background-color: rgba(30, 30, 30, 0.6); /* Semi-transparent dark background */
+    padding: 1px 4px;
+    border-radius: 3px;
+    pointer-events: none; /* Make it non-interactive */
 }

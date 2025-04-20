@@ -1,10 +1,11 @@
 import asyncio
 import subprocess
 import os # For reading env vars
+import uuid # For unique IDs
 from dotenv import load_dotenv # For reading env vars
 from tavily import TavilyClient # Import Tavily client
 from langchain_openai import ChatOpenAI # Import OpenAI client
-from browser_use import Agent, Browser, BrowserConfig
+from browser_use import Agent, Browser, BrowserConfig, Controller, ActionResult
 
 # --- Load Env Vars and Initialize Clients ---
 load_dotenv()
@@ -22,6 +23,7 @@ if not openai_api_key:
 else:
     # Initialize the LLM globally for the browser tool
     llm = ChatOpenAI(model="gpt-4.1-mini", openai_api_key=openai_api_key) 
+    planner_llm = ChatOpenAI(model='o3-mini', openai_api_key=openai_api_key)
 # --- End Init ---
 
 async def run_bash_command(command: str) -> str:
@@ -116,35 +118,140 @@ async def perform_web_search(query: str, num_results: int = 3) -> str:
         return f"Error: Tavily search failed - {e}"
 # --- End Updated Function --- 
 
-# --- New Tool: Browser User ---
-async def execute_browser_task(task: str) -> str:
-    """Executes a browsing task using the browser_use.Agent.
-    Args: task: The string describing the task for the agent.
-    Returns: String containing the result from the agent or an error message.
-    """
-    print(f"[Server Tool] Browser agent task: '{task}'")
-    if not llm:
-        return "Error: OpenAI API key not configured. Browser tool cannot run."
-    if not Agent:
-        return "Error: browser_use.Agent could not be imported."
+# --- Updated Tool: Browser User ---
+# Updated signature to accept websocket and shared state
+async def execute_browser_task(task: str, websocket, websocket_id: str, pending_questions_dict: dict) -> str:
+    """Executes a browsing task using browser_use.Agent with websocket interaction.
 
+    Args:
+        task: The string describing the task for the agent.
+        websocket: The WebSocket connection object for the specific client.
+        websocket_id: A unique identifier for the websocket connection.
+        pending_questions_dict: A shared dictionary to manage pending questions futures.
+
+    Returns:
+        String containing the result from the agent or an error message.
+    """
+    print(f"[Server Tool] Browser agent task started for websocket {websocket_id}: '{task}'")
+    if not llm:
+        print("[Server Tool Error] OpenAI API key not configured. Browser tool cannot run.")
+        return "Error: OpenAI API key not configured. Browser tool cannot run."
+    if not Agent or not Controller or not ActionResult:
+         print("[Server Tool Error] Failed to import required browser_use components.")
+         return "Error: Failed to import required browser_use components."
+
+    browser = None # Initialize browser to None for finally block
     try:
-        # Instantiate and run the agent
+        # --- Define Nested Action for Asking User ---
+        controller = Controller()
+
+        @controller.action('Ask user for information or permission to proceed')
+        async def ask_human_via_websocket(question: str) -> ActionResult:
+            request_id = str(uuid.uuid4())
+            future = asyncio.Future()
+
+            # Store future before sending question
+            if websocket_id not in pending_questions_dict:
+                pending_questions_dict[websocket_id] = {}
+            pending_questions_dict[websocket_id][request_id] = future
+
+            try:
+                message = {'type': 'agent_question', 'request_id': request_id, 'question': question}
+                print(f"[Server Tool - ask_human] Sending question (req_id: {request_id}) to websocket {websocket_id}: {question}")
+                # Assuming websocket object has send_json method
+                await websocket.send_json(message) 
+
+                # Wait for the answer with a timeout
+                answer = await asyncio.wait_for(future, timeout=300.0) # 5 minute timeout
+                print(f"[Server Tool - ask_human] Received answer (req_id: {request_id}) from websocket {websocket_id}: {answer}")
+                return ActionResult(extracted_content=str(answer))
+            except asyncio.TimeoutError:
+                print(f"[Server Tool Error - ask_human] Timeout waiting for answer (req_id: {request_id}) from websocket {websocket_id}")
+                # Future is automatically cancelled on timeout, just need to clean up dict
+                return ActionResult(extracted_content="Error: User did not respond in time.")
+            except Exception as e:
+                print(f"[Server Tool Error - ask_human] Error during ask_human (req_id: {request_id}): {e}")
+                # Future might still exist, try to cancel
+                if not future.done():
+                    future.set_exception(e)
+                return ActionResult(extracted_content=f"Error: Failed to get user input - {e}")
+            finally:
+                # Always clean up the pending question entry
+                if websocket_id in pending_questions_dict and request_id in pending_questions_dict[websocket_id]:
+                    del pending_questions_dict[websocket_id][request_id]
+                    if not pending_questions_dict[websocket_id]: # Remove user dict if empty
+                        del pending_questions_dict[websocket_id]
+
+        # --- Define Nested Hook for Step Updates ---
+        async def send_step_update_to_client(agent):
+            try:
+                # Safely access history elements
+                thoughts = agent.state.history.model_thoughts()[-1] if agent.state.history.model_thoughts() else "No thoughts recorded yet."
+                actions = agent.state.history.model_actions()[-1] if agent.state.history.model_actions() else "No action recorded yet."
+                urls = agent.state.history.urls()[-1] if agent.state.history.urls() else "No URL visited yet."
+
+                # Extract action details if available
+                action_details = "N/A"
+                if actions and hasattr(actions, 'action_name') and hasattr(actions, 'action_arguments'):
+                   action_details = f"Action: {actions.action_name}, Args: {actions.action_arguments}"
+
+                update_data = {
+                    'thoughts': str(thoughts), # Ensure string representation
+                    'action': action_details,
+                    'url': str(urls)
+                }
+                message = {'type': 'agent_step_update', 'data': update_data}
+                print(f"[Server Tool - hook] Sending step update to websocket {websocket_id}")
+                await websocket.send_json(message)
+            except Exception as e:
+                # Log error but don't crash the agent
+                print(f"[Server Tool Error - hook] Failed to send step update to websocket {websocket_id}: {e}")
+
+        # --- Instantiate and Run the Agent ---
+        print(f"[Server Tool] Initializing Browser for websocket {websocket_id}")
         browser = Browser(
             config=BrowserConfig(
-                browser_binary_path='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',  # macOS path
+                browser_binary_path='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', # macOS path
+                # Consider adding headless=True for server environments if UI isn't needed
             )
         )
-        agent = Agent(task=task, llm=llm, browser=browser)
-        result = await agent.run()
-        print(f"[Server Tool] Browser agent finished task: '{task}'")
+
+        print(f"[Server Tool] Initializing Agent for websocket {websocket_id}")
+        agent = Agent(
+            task=task, 
+            llm=llm, 
+            # planner_llm=planner_llm,
+            # browser=browser, 
+            controller=controller # Pass the controller with the custom action
+        )
+
+        print(f"[Server Tool] Running agent.run() for websocket {websocket_id}")
+        # Run the agent with the step update hook
+        result = await agent.run(on_step_end=send_step_update_to_client) 
+        
+        print(f"[Server Tool] Browser agent finished task for websocket {websocket_id}: '{task}'")
         return str(result) # Ensure result is string
+
     except ImportError:
-         print("[Server Tool Error] Failed to import browser_use.Agent. Make sure browser_use.py exists and is importable.")
-         return "Error: Failed to import browser_use.Agent."
+         print("[Server Tool Error] Failed to import browser_use components.")
+         return "Error: Failed to import browser_use components."
     except Exception as e:
-        print(f"[Server Tool Error] Browser agent failed: {e}")
+        print(f"[Server Tool Error] Browser agent failed for websocket {websocket_id}: {e}")
         return f"Error: Browser agent failed - {e}"
+    finally:
+        # Ensure browser is closed if it was initialized
+        if browser:
+            print(f"[Server Tool] Closing browser for websocket {websocket_id}")
+            await browser.close()
+        # Clean up any lingering questions for this websocket_id on error/exit
+        if websocket_id in pending_questions_dict:
+            print(f"[Server Tool] Cleaning up pending questions for websocket {websocket_id} on exit.")
+            # Cancel any pending futures for this specific websocket
+            for request_id, future in pending_questions_dict.get(websocket_id, {}).items():
+                if not future.done():
+                    future.cancel("Browser agent task terminated unexpectedly.")
+            del pending_questions_dict[websocket_id]
+
 # --- End Browser User ---
 
 # Tool definition for OpenAI API
@@ -297,10 +404,30 @@ BROWSER_USER_TOOL_SCHEMA = {
 }
 # --- End Browser User Schema ---
 
+# --- Paste at Cursor Schema ---
+PASTE_AT_CURSOR_TOOL_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "paste_at_cursor",
+        "description": "Pastes the provided text content at the current cursor location in the user's active application.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "content_to_paste": {
+                    "type": "string",
+                    "description": "The text content to be pasted.",
+                },
+            },
+            "required": ["content_to_paste"],
+        },
+    }
+}
+# --- End Paste at Cursor Schema ---
+
 # --- Registry for Server-Executable Tools --- 
 SERVER_EXECUTABLE_TOOLS = {
     "search": perform_web_search,
-    "browser_user": execute_browser_task, # Add browser user tool
+    # "browser_user": execute_browser_task, # Make sure this maps to the updated function
     # Add other server-side functions here mapped by their name
 }
 # --- End Registry --- 
@@ -314,5 +441,6 @@ TOOL_SCHEMAS = [
     READ_FILE_TOOL_SCHEMA, # Add file read tool
     EDIT_FILE_TOOL_SCHEMA, # Add file edit tool
     BROWSER_USER_TOOL_SCHEMA, # Add browser user tool
+    PASTE_AT_CURSOR_TOOL_SCHEMA, # Add paste tool
     # Add other tool schemas here
 ] 

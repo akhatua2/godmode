@@ -1,6 +1,6 @@
 import WebSocket from 'ws';
 import { exec } from 'node:child_process';
-import type { BrowserWindow } from 'electron';
+import { BrowserWindow, clipboard } from 'electron';
 import fs from 'node:fs/promises'; // Import fs for file operations
 import path from 'node:path'; // Import path for joining
 import type { ToolCall } from './types'; // Assuming types.ts is in the same directory or adjust path
@@ -52,6 +52,8 @@ export function executeTool(ws: WebSocket | null, mainWindow: BrowserWindow | nu
              console.log(`[Tool Executor] Received request to execute edit_file for ID: ${pendingCall.id}. Client-side execution needed.`);
              // Similar to read_file, acknowledge and indicate client needs to act.
              handleEditFile(ws, mainWindow, pendingCall); // Call the actual handler
+        } else if (pendingCall.function.name === 'paste_at_cursor') {
+            handlePasteAtCursor(ws, mainWindow, pendingCall); // Call the new handler
         } else {
             console.warn(`[Tool Executor] Attempted to execute unknown tool: ${pendingCall.function.name}`);
             const errorMessage = `Execution Failed: Unknown tool '${pendingCall.function.name}'.`;
@@ -260,3 +262,80 @@ async function handleEditFile(ws: WebSocket | null, mainWindow: BrowserWindow | 
         }
     }
 }
+
+// --- Paste at Cursor Handler ---
+async function handlePasteAtCursor(ws: WebSocket | null, mainWindow: BrowserWindow | null, pendingCall: ToolCall) {
+    const toolCallId = pendingCall.id;
+    let contentToPaste = '';
+    let originalClipboardContent = ''; // Variable to store original clipboard content
+
+    try {
+        const rawArgs = pendingCall.function.arguments;
+        console.log(`[Tool Executor DEBUG] Raw arguments for paste_at_cursor: ${rawArgs}`);
+        const args = JSON.parse(rawArgs);
+        console.log(`[Tool Executor DEBUG] Parsed arguments for paste_at_cursor:`, args);
+
+        contentToPaste = args.content_to_paste;
+
+        if (typeof contentToPaste !== 'string') {
+            throw new Error('Invalid content_to_paste argument.');
+        }
+
+        // 1. Save original clipboard content
+        originalClipboardContent = clipboard.readText();
+        console.log('[Tool Executor] Original clipboard content saved.');
+
+        // 2. Write new content to clipboard
+        clipboard.writeText(contentToPaste);
+        console.log('[Tool Executor] New content written to clipboard.');
+
+        // 3. Simulate Paste (macOS specific using AppleScript)
+        const appleScriptCommand = `osascript -e 'tell application "System Events" to keystroke "v" using command down'`;
+
+        console.log('[Tool Executor] Executing AppleScript to simulate paste...');
+        exec(appleScriptCommand, (error, stdout, stderr) => {
+            // --- Callback Start ---
+            let operationSucceeded = true; // Assume success initially
+            let resultMessage = '';
+
+            if (error) {
+                operationSucceeded = false;
+                console.error(`[Tool Executor] AppleScript paste error (${toolCallId}): ${error.message}`);
+                resultMessage = `Paste Error: Failed to simulate paste action - ${error.message}`;
+            } else {
+                if (stderr) {
+                     console.warn(`[Tool Executor] AppleScript paste stderr (${toolCallId}): ${stderr}`);
+                     // Might not be a fatal error, but good to know
+                }
+                resultMessage = `Successfully pasted content.`;
+                console.log(`[Tool Executor] ${resultMessage}`);
+            }
+
+            // Send result (success or error) back to backend
+            sendToolResultToBackend(ws, mainWindow, toolCallId, resultMessage);
+            // Send result to frontend
+            if (mainWindow) {
+                mainWindow.webContents.send('command-output-from-main', resultMessage);
+            }
+
+            // 4. Restore original clipboard content AFTER sending results
+            clipboard.writeText(originalClipboardContent);
+            console.log('[Tool Executor] Original clipboard content restored.');
+            // --- Callback End ---
+        });
+
+    } catch (error: any) {
+        console.error(`[Tool Executor] Error handling paste_at_cursor for ${toolCallId}:`, error);
+        const errorMessage = `Paste Handler Error: ${error.message}`;
+        sendToolResultToBackend(ws, mainWindow, toolCallId, errorMessage);
+         if (mainWindow) {
+            mainWindow.webContents.send('command-output-from-main', errorMessage);
+        }
+        // Restore clipboard even if the initial setup fails (e.g., argument parsing)
+        if (originalClipboardContent) { // Only restore if it was read successfully
+            clipboard.writeText(originalClipboardContent);
+            console.log('[Tool Executor] Original clipboard content restored after setup error.');
+        }
+    }
+}
+// --- End Paste at Cursor Handler ---
