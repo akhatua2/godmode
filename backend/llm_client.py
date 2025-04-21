@@ -45,6 +45,7 @@ async def get_llm_response_stream(
 
         # Initialize calculated_cost outside the loop, before finally
         calculated_cost = 0.0 
+        response_content = "" # Initialize response_content
 
         async for chunk in stream_object:
             # Assume it's a ChatCompletionChunk if not an error dict
@@ -61,32 +62,32 @@ async def get_llm_response_stream(
             # --- End Usage Capture ---
             
             # --- Start Debug Logging --- 
-            # print(f"[Agent DEBUG] Raw Chunk: {chunk.model_dump_json(indent=2)}")
+            print(f"[LLM Client DEBUG] Raw Chunk: {chunk.model_dump_json(indent=2)}")
             # --- End Debug Logging --- 
             
             yield chunk 
             
-        # --- Manual Cost Calculation Logic (Restored) --- 
-        if captured_prompt_tokens is not None and captured_completion_tokens is not None:
-            print(f"[LLM Client] Attempting manual calculation from captured usage: P={captured_prompt_tokens}, C={captured_completion_tokens}")
-            try:
-                input_cost, output_cost = litellm.cost_per_token(
-                    model=model_name, 
-                    prompt_tokens=captured_prompt_tokens, 
-                    completion_tokens=captured_completion_tokens
-                )
-                manual_cost = input_cost + output_cost
-                print(f"[LLM Client] Manually calculated cost: ${manual_cost:.6f}")
-                # Assign the calculated cost
-                calculated_cost = manual_cost 
-            except Exception as cost_calc_e:
-                print(f"[LLM Client Warning] Failed to calculate cost from usage via cost_per_token: {cost_calc_e}")
-                calculated_cost = 0.0 # Default to 0 if calculation fails
-        else:
-            # This case means token counts were not captured from the stream
-            print(f"[LLM Client Warning] Failed to capture token counts from stream chunks for manual cost calculation.")
-            calculated_cost = 0.0 # Default to 0 if tokens weren't captured
-        # --- End Manual Cost Calculation --- 
+        # --- Post-Stream Cost Calculation using token_counter --- 
+        try:
+            # Calculate tokens using litellm.token_counter after stream completion
+            prompt_tokens_calculated = litellm.token_counter(model=model_name, messages=messages)
+            completion_tokens_calculated = litellm.token_counter(model=model_name, text=response_content) if response_content else 0
+            print(f"[LLM Client] Tokens calculated via token_counter: P={prompt_tokens_calculated}, C={completion_tokens_calculated}")
+            
+            # Calculate cost using these token counts
+            input_cost, output_cost = litellm.cost_per_token(
+                model=model_name, 
+                prompt_tokens=prompt_tokens_calculated, 
+                completion_tokens=completion_tokens_calculated
+            )
+            manual_cost = input_cost + output_cost
+            print(f"[LLM Client] Calculated cost via token_counter: ${manual_cost:.6f}")
+            calculated_cost = manual_cost # Assign the calculated cost
+            
+        except Exception as cost_calc_e:
+            print(f"[LLM Client Warning] Failed to calculate cost via token_counter: {cost_calc_e}")
+            calculated_cost = 0.0 # Default to 0 if calculation fails
+        # --- End Post-Stream Cost Calculation ---
 
     except Exception as e:
         # Catch potential LiteLLM specific errors or general errors

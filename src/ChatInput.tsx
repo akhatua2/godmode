@@ -25,9 +25,16 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   const [includeScreenshot, setIncludeScreenshot] = useState(false); 
 
   // --- State and Handler for Model Selection (MOVED FROM APP) --- 
-  const availableModels = ["gpt-4o-mini", "gpt-4.1-mini", "ollama/llama3.2", "ollama/qwen2.5:7b"]; 
+  const modelMap = {
+    "gpt-4o-mini": "4o-mini",
+    "gpt-4.1-mini": "4.1mini",
+    "ollama/llama3.2": "llama3.2",
+    "ollama/qwen2.5:7b": "qwen2.5",
+    "gemini/gemini-2.0-flash": "gemini2.0",
+    "anthropic/claude-3-5-sonnet-20240620": "claude3.5"
+  };
+  const availableModels = Object.keys(modelMap);
   const [selectedModel, setSelectedModel] = useState<string>(availableModels[0]); // Default to first model
-  
   const handleModelChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     const newModel = event.target.value;
     console.log(`[ChatInput] Model selected: ${newModel}`);
@@ -161,12 +168,12 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         <div className="chat-input-bottom-right">
           {/* Session Cost Display (moved inside wrapper) */}
           <div className="session-cost-display">
-            Cost: ${sessionCost.toFixed(3)} 
+            Cost: ${sessionCost.toFixed(6)} 
           </div>
           {/* Model Selector (moved here) */}
           <select value={selectedModel} onChange={handleModelChange} className="model-selector-select">
-            {availableModels.map(model => (
-              <option key={model} value={model}>{model}</option>
+            {(Object.keys(modelMap) as Array<keyof typeof modelMap>).map(model => (
+              <option key={model} value={model}>{modelMap[model]}</option>
             ))}
           </select>
         </div>
