@@ -144,7 +144,7 @@ function App() {
     
     const handleTerminateRequest = (event: Electron.IpcRendererEvent, reason: string) => {
         console.log('App: Terminate request received:', reason);
-        setIsProcessing(true); // Treat termination as the end, disable input
+        setIsProcessing(false); // Treat termination as the end, disable input
         setIsBotStreaming(false);
         // Add the reason as a regular bot message
         setMessages(prev => [...prev, { text: reason || "Task finished.", isUser: false }]);
@@ -316,6 +316,19 @@ function App() {
         })}
         <div ref={messagesEndRef} />
       </div>
+
+      {/* --- Typing Indicator Container (Now above ChatInput) --- */}
+      {isProcessing && (
+          <div className="typing-indicator-container">
+            <div className="typing-indicator">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+          </div>
+        )}
+      {/* --- End Typing Indicator --- */}
+
       <ChatInput 
         inputValue={inputValue}
         onInputChange={handleInputChange}

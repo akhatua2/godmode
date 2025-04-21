@@ -381,3 +381,46 @@
   word-wrap: break-word;
   margin: 0; /* Remove default pre margin */
 } 
+
+
+/* Typing Indicator Styles */
+.typing-indicator-container {
+  /* New container to hold the indicator above ChatInput */
+  padding: 0 15px 5px 15px; /* Match messages-area horizontal padding, add small bottom padding */
+  flex-shrink: 0; /* Prevent shrinking */
+  display: flex; /* Use flex to align the indicator */
+  /* Remove align-items: center; if you want default left align */
+}
+
+.typing-indicator {
+  display: flex;
+  align-items: center;
+  /* padding: 10px 0; OLD: Remove specific padding here */
+}
+
+.typing-indicator span {
+  height: 6px; /* Smaller dots */
+  width: 6px;  /* Smaller dots */
+  background-color: #6b7280; /* Tailwind gray-500, slightly darker */
+  border-radius: 50%;
+  display: inline-block;
+  margin: 0 1.5px; /* Slightly reduce space between dots */
+  animation: bounce 1.4s infinite ease-in-out both;
+}
+
+.typing-indicator span:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.typing-indicator span:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+@keyframes bounce {
+  0%, 80%, 100% {
+    transform: scale(0);
+  }
+  40% {
+    transform: scale(1.0);
+  }
+}

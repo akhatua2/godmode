@@ -20,6 +20,10 @@ async def get_llm_response_stream(
     print(f"[LLM Client - LiteLLM] Requesting completion from {model_name}...")
     
     try:
+        api_base = None
+        if model_name.startswith("ollama/"):
+            api_base = "http://localhost:11434" 
+            print(f"[LLM Client - LiteLLM] Using Ollama model, setting api_base: {api_base}")
         # Use litellm.acompletion for asynchronous streaming
         stream_object = await litellm.acompletion(
             model=model_name,
@@ -29,6 +33,7 @@ async def get_llm_response_stream(
             # parallel_tool_calls=False, # LiteLLM might handle this differently or not support it directly
             temperature=temperature,
             stream=True,
+            api_base=api_base
         )
         # Iterate through the stream yielded by LiteLLM
         finish_reason = None

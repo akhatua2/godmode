@@ -94,6 +94,10 @@ class ChatAgent:
 
         # Process stream for content or tool calls
         response_content = ""
+        buffered_content = ""  # Buffer for potential JSON response 
+        is_ollama_model = self.model_name.startswith("ollama/")  # Check if using Ollama
+        looks_like_json = False  # Flag to check if response looks like JSON
+        
         tool_calls_in_progress: Dict[int, Dict[str, Any]] = {} 
         finish_reason = None
         error_yielded = False # Flag to track if an error dict was yielded
@@ -133,7 +137,22 @@ class ChatAgent:
 
             if delta and delta.content:
                 response_content += delta.content
-                yield delta.content 
+                
+                # Check if this looks like JSON when using Ollama
+                if is_ollama_model:
+                    buffered_content += delta.content
+                    
+                    # Check if response starts to look like JSON
+                    if not looks_like_json and buffered_content.strip().startswith("{"):
+                        looks_like_json = True
+                        print("[Agent DEBUG] Response looks like JSON, buffering content")
+                    
+                    # Only stream if we're certain it's not JSON
+                    if not looks_like_json:
+                        yield delta.content
+                else:
+                    # For non-Ollama models, stream normally
+                    yield delta.content 
 
             if delta and delta.tool_calls:
                 # --- Debug Logging for Tool Call Chunks ---
@@ -184,6 +203,13 @@ class ChatAgent:
 
                 if valid_tool_calls:
                     print(f"[Agent] Detected tool calls: {[call['function']['name'] for call in valid_tool_calls]}")
+                    
+                    # Ensure arguments are in the expected string format for all tool calls
+                    for call in valid_tool_calls:
+                        if isinstance(call.get('function', {}).get('arguments'), dict):
+                            # Convert dict arguments to JSON string
+                            call['function']['arguments'] = json.dumps(call['function']['arguments'])
+                    
                     # Add the assistant message *requesting* the tool call(s) to memory
                     self.add_message_to_memory(role="assistant", tool_calls=valid_tool_calls, content=None)
                     # Yield the request object (plain dict) to the WebSocket handler
@@ -196,14 +222,69 @@ class ChatAgent:
 
             elif captured_finish_reason == "stop":
                 print(f"[Agent] Finished normally (stop reason). Response length: {len(response_content)}")
-                # Normal stop, add the complete assistant response to memory
-                if response_content: 
-                    self.add_message_to_memory(role="assistant", content=response_content)
-                else:
-                    # LLM finished with stop but no text and no tool calls - maybe just an acknowledgement? Add empty response.
-                    print("[Agent] Warning: Stream finished with stop reason but no text content.")
-                    self.add_message_to_memory(role="assistant", content=None) # Represent empty response
-                    # Do we need to yield anything here? Main expects an 'end' signal later.
+                handled_as_tool_call = False # Flag to check if we parsed it as a tool call
+                if response_content:
+                    try:
+                        # Attempt to parse the content as JSON
+                        parsed_content = json.loads(response_content.strip())
+                        # Check if it looks like the expected tool call structure
+                        if isinstance(parsed_content, dict) and \
+                           parsed_content.get("name") and \
+                           isinstance(parsed_content.get("arguments"), dict):
+                            
+                            print("[Agent] Interpreting JSON content from 'stop' reason as a tool call.")
+                            # Generate a plausible tool call ID (consider improving this)
+                            tool_call_id = f"tool_{parsed_content['name']}_{abs(hash(str(parsed_content['arguments']))) % 10000}"
+                            
+                            # Convert the arguments to a string if it's not already
+                            arguments_json = ""
+                            if isinstance(parsed_content.get('arguments'), dict):
+                                # Serialize the arguments back to a JSON string to match expected format
+                                arguments_json = json.dumps(parsed_content['arguments'])
+                            elif isinstance(parsed_content.get('arguments'), str):
+                                arguments_json = parsed_content['arguments']
+                                
+                            # Build the final tool call with arguments as a serialized JSON string
+                            final_tool_calls = [{
+                                "id": tool_call_id,
+                                "type": "function",
+                                "function": {
+                                    "name": parsed_content['name'],
+                                    "arguments": arguments_json
+                                }
+                            }]
+                            
+                            print(f"[Agent DEBUG] Created tool call: {final_tool_calls}")
+                            
+                            # Add to memory as tool call request
+                            self.add_message_to_memory(role="assistant", tool_calls=final_tool_calls, content=None)
+                            # Yield the request object
+                            yield {"type": 'tool_call_request', "tool_calls": final_tool_calls}
+                            handled_as_tool_call = True
+                            
+                    except json.JSONDecodeError:
+                        # Not JSON, treat as regular text
+                        print("[Agent DEBUG] Content is not valid JSON.")
+                        pass # handled_as_tool_call remains False
+                    except (KeyError, TypeError) as e:
+                        # JSON but not the expected structure
+                        print(f"[Agent DEBUG] Content is JSON but not a valid tool call structure: {e}")
+                        pass # handled_as_tool_call remains False
+                
+                # If it wasn't handled as a tool call, add as regular content
+                if not handled_as_tool_call:
+                    # If we buffered content (for Ollama JSON detection) but it wasn't actually a tool call,
+                    # now we need to yield it to the client
+                    if is_ollama_model and looks_like_json and not handled_as_tool_call:
+                        print("[Agent DEBUG] Buffered content wasn't a tool call, yielding it now")
+                        yield buffered_content
+                        
+                    if response_content:
+                        self.add_message_to_memory(role="assistant", content=response_content)
+                    else:
+                        # LLM finished with stop but no text and no tool calls
+                        print("[Agent] Warning: Stream finished with stop reason but no text content and not parsed as tool call.")
+                        self.add_message_to_memory(role="assistant", content=None)
             else:
                 # Handle other finish reasons (length, content_filter, etc.) or incomplete streams
                 print(f"[Agent] Stream finished with unexpected reason: {captured_finish_reason}")
