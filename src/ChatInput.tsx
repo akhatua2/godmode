@@ -25,7 +25,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   const [includeScreenshot, setIncludeScreenshot] = useState(false); 
 
   // --- State and Handler for Model Selection (MOVED FROM APP) --- 
-  const availableModels = ["gpt-4o-mini", "gpt-4.1-mini"]; 
+  const availableModels = ["gpt-4o-mini", "gpt-4.1-mini", "ollama/llama3.2"]; 
   const [selectedModel, setSelectedModel] = useState<string>(availableModels[0]); // Default to first model
   
   const handleModelChange = (event: React.ChangeEvent<HTMLSelectElement>) => {

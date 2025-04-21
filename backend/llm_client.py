@@ -19,17 +19,27 @@ async def get_llm_response_stream(
     
     print(f"[LLM Client - LiteLLM] Requesting completion from {model_name}...")
     
+    # --- Prepare LiteLLM arguments ---
+    litellm_args = {
+        "model": model_name,
+        "messages": messages,
+        "tools": TOOL_SCHEMAS,
+        "tool_choice": "auto",
+        "temperature": temperature,
+        "stream": True,
+    }
+
+    # Conditionally add api_base for Ollama models
+    if model_name.startswith("ollama/"):
+        api_base = "http://localhost:11434" 
+        litellm_args["api_base"] = api_base
+        print(f"[LLM Client - LiteLLM] Using Ollama model, setting api_base: {api_base}")
+    # --- End argument preparation ---
+
     try:
-        # Use litellm.acompletion for asynchronous streaming
-        stream_object = await litellm.acompletion(
-            model=model_name,
-            messages=messages,
-            tools=TOOL_SCHEMAS,
-            tool_choice="auto",
-            # parallel_tool_calls=False, # LiteLLM might handle this differently or not support it directly
-            temperature=temperature,
-            stream=True,
-        )
+        # Use litellm.acompletion for asynchronous streaming with unpacked args
+        stream_object = await litellm.acompletion(**litellm_args)
+        
         # Iterate through the stream yielded by LiteLLM
         finish_reason = None
         error_yielded = False # Flag to track if an error dict was yielded
