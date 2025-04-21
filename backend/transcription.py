@@ -47,26 +47,31 @@ async def get_transcription(audio_base64: str, file_format: str = "webm") -> str
         print(f"[Transcription Service] Saved temporary audio file: {temp_filepath}")
 
         try:
-             async with aiofiles.open(temp_filepath, "rb") as audio_file_object:
-                print(f"[Transcription Service] Calling LiteLLM with file object...")
-                # Note: LiteLLM might expect the file object directly, 
-                # or sometimes specific attributes like name. Check LiteLLM docs if issues arise.
-                response = await litellm.atranscription(
-                    model="whisper-1", 
-                    file=audio_file_object
-                )
-                # Response structure might vary, adjust as needed. Often it's response.text
-                if hasattr(response, 'text'):
-                    transcribed_text = response.text
-                elif isinstance(response, dict) and 'text' in response:
-                     transcribed_text = response['text']
-                else:
-                    # Fallback or raise error if structure unknown
-                    transcribed_text = str(response) 
-                    print("[Transcription Service Warning] Unexpected response structure from litellm.atranscription")
+            # --- Pass audio as a tuple: (filename, bytes, content_type) --- 
+            file_tuple = (temp_filename, audio_bytes, f"audio/{file_format}")
+            print(f"[Transcription Service] Calling LiteLLM with file tuple: ({temp_filename}, <bytes>, 'audio/{file_format}')")
 
-                print(f"[Transcription Service] Transcription successful: {transcribed_text[:100]}...")
-                return transcribed_text
+            # async with aiofiles.open(temp_filepath, "rb") as audio_file_object: # REMOVED: Don't need to reopen
+            #     print(f"[Transcription Service] Calling LiteLLM with file object...")
+            #     # Note: LiteLLM might expect the file object directly, 
+            #     # or sometimes specific attributes like name. Check LiteLLM docs if issues arise.
+            response = await litellm.atranscription(
+                model="whisper-1", 
+                file=file_tuple # Pass the tuple instead of file object
+            )
+            # --- End tuple usage ---
+            # Response structure might vary, adjust as needed. Often it's response.text
+            if hasattr(response, 'text'):
+                transcribed_text = response.text
+            elif isinstance(response, dict) and 'text' in response:
+                 transcribed_text = response['text']
+            else:
+                # Fallback or raise error if structure unknown
+                transcribed_text = str(response) 
+                print("[Transcription Service Warning] Unexpected response structure from litellm.atranscription")
+
+            print(f"[Transcription Service] Transcription successful: {transcribed_text[:100]}...")
+            return transcribed_text
         except Exception as transcription_err:
             print(f"[Transcription Service Error] LiteLLM transcription failed: {transcription_err}")
             import traceback

@@ -5,7 +5,8 @@ import asyncio # Added for future handling
 import base64 # Added
 import aiofiles # Added
 import uuid # Added
-import litellm # Added
+import datetime # Added for DB timestamps
+import aiosqlite # ADDED
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -13,289 +14,175 @@ from dotenv import load_dotenv
 from agent import ChatAgent 
 from typing import List, Dict, Any, Callable, Tuple, Optional
 # --- Import Server Tool Registry --- 
-from tools import SERVER_EXECUTABLE_TOOLS, execute_browser_task # Explicitly import execute_browser_task for type check
 # --- End Import --- 
+# --- Import Database Functions ---
+from database import init_db, save_message_to_db, update_chat_metadata_in_db, DATABASE_URL
+# --- End DB Import ---
+# --- Import Logic Functions ---
+from transcription import get_transcription # ADDED
+from websocket_logic import run_agent_step_and_send # ADDED (Explicit import)
+# --- End Import Logic Functions ---
 
 # Load environment variables from .env file
 load_dotenv()
 
-# Ensure necessary environment variables are set for LiteLLM (e.g., OPENAI_API_KEY)
-if not os.getenv("OPENAI_API_KEY"):
-    print("[CRITICAL ERROR] OPENAI_API_KEY not found in environment variables. LiteLLM cannot function.")
-    # Optionally exit or raise an exception
+# --- Global state for active connections ---
+# Key: connection_key (e.g., str(websocket.client)), Value: Dict containing chat_id, agent, total_cost
+ACTIVE_CONNECTIONS: Dict[str, Dict[str, Any]] = {}
+# --- End Global State ---
 
 app = FastAPI()
+
+@app.on_event("startup")
+async def startup_event():
+    await init_db()
 
 # --- Shared state for pending agent questions --- 
 PENDING_AGENT_QUESTIONS: Dict[str, Dict[str, asyncio.Future]] = {}
 # --- End Shared State ---
 
-# --- Helper function to run agent step and handle output ---
-async def run_agent_step_and_send(agent: ChatAgent, websocket: WebSocket) -> Tuple[bool, Optional[float]]:
-    """Runs one step of the agent and sends chunks/tool requests over WebSocket.
-    Returns a tuple: (agent_finished_turn: bool, cost: Optional[float])
-    """
-    stream_ended = False
-    first_tool_name = None # Initialize variable
-    final_cost_from_agent = None # Initialize cost variable
-    try:
-        # Directly iterate and capture cost within this function
-        async for result in agent.step():
-            # --- Check for final_cost tuple --- 
-            if isinstance(result, tuple) and result[0] == "final_cost":
-                 final_cost_from_agent = result[1]
-                 print(f"[run_agent_step_and_send] Captured final_cost: {final_cost_from_agent}")
-                 # Don't yield this tuple outside, just capture it.
-                 continue # Skip further processing of the tuple itself
-            # --- End check ---
-            
-            if isinstance(result, str): # Text chunk
-                await websocket.send_text(json.dumps({"type": "chunk", "content": result}))
-            elif isinstance(result, dict):
-                result_type = result.get("type")
-                if result_type == "tool_call_request":
-                    tool_calls = result.get("tool_calls", [])
-                    if not tool_calls: 
-                        print("[WebSocket WARNING] Received tool_call_request with no tool_calls")
-                        await websocket.send_text(json.dumps({"type": "error", "content": "Agent requested tool call but sent no tools."}))
-                        stream_ended = True
-                        break # Exit the async for loop
-                        
-                    first_tool_call = tool_calls[0] # Expecting only one due to parallel_tool_calls=False
-                    first_tool_name = first_tool_call.get("function", {}).get("name")
-                    tool_call_id = first_tool_call.get("id")
-                    arguments = first_tool_call.get("function", {}).get("arguments", "{}") # Get arguments string
-                    
-                    # --- Check if it's a Server-Side Tool --- 
-                    if first_tool_name in SERVER_EXECUTABLE_TOOLS:
-                        print(f"[WebSocket] Executing server-side tool: {first_tool_name}")
-                        server_function = SERVER_EXECUTABLE_TOOLS[first_tool_name]
-                        websocket_id = str(websocket.client) # Generate websocket ID
-                        try:
-                            # Parse arguments
-                            parsed_args = json.loads(arguments)
-                            # --- Execute the tool function --- 
-                            if server_function is execute_browser_task: # Check if it's the browser tool
-                                task_arg = parsed_args.get('task')
-                                if task_arg:
-                                    print(f"[WebSocket] Calling execute_browser_task for websocket {websocket_id}")
-                                    result_content = await execute_browser_task(
-                                        task=task_arg, 
-                                        websocket=websocket, 
-                                        websocket_id=websocket_id, 
-                                        pending_questions_dict=PENDING_AGENT_QUESTIONS
-                                    )
-                                else:
-                                    result_content = "Error: Missing 'task' argument for browser_user tool."
-                            else: # For other server-side tools (e.g., search)
-                                result_content = await server_function(**parsed_args)
-                            # --- End Tool Execution --- 
-                            
-                            # Add result to memory
-                            agent.add_message_to_memory(role="tool", 
-                                                      tool_call_id=tool_call_id, 
-                                                      content=result_content)
-                            # Trigger the next agent step immediately
-                            print("[WebSocket] Triggering agent step after server tool execution...")
-                            agent_finished, _ = await run_agent_step_and_send(agent, websocket)
-                            return agent_finished, final_cost_from_agent
-                        except json.JSONDecodeError:
-                            print(f"[WebSocket Error] Failed to parse arguments for {first_tool_name}: {arguments}")
-                            agent.add_message_to_memory(role="tool", tool_call_id=tool_call_id, content=f"Error: Invalid arguments provided for {first_tool_name}.")
-                            agent_finished, _ = await run_agent_step_and_send(agent, websocket)
-                            return agent_finished, final_cost_from_agent
-                        except Exception as tool_exec_error:
-                            print(f"[WebSocket Error] Error executing server tool {first_tool_name}: {tool_exec_error}")
-                            traceback.print_exc()
-                            agent.add_message_to_memory(role="tool", tool_call_id=tool_call_id, content=f"Error executing tool {first_tool_name}: {tool_exec_error}")
-                            agent_finished, _ = await run_agent_step_and_send(agent, websocket)
-                            return agent_finished, final_cost_from_agent
-                    # --- End Server-Side Tool Check --- 
-                    
-                    # --- Client-Side and Flow Tools --- 
-                    elif first_tool_name in ["run_bash_command", "read_file", "edit_file", "paste_at_cursor"]:
-                        print(f"WebSocket sending tool_call_request for: {first_tool_name}")
-                        # Send the specific tool call object, not the whole result dict
-                        await websocket.send_text(json.dumps({"type": "tool_call_request", "tool_calls": [first_tool_call]}))
-                        stream_ended = True 
-                        return False, final_cost_from_agent
-                    elif first_tool_name == "ask_user":
-                        if tool_call_id:
-                            agent.pending_ask_user_tool_call_id = tool_call_id
-                            print(f"[WebSocket] Stored pending ask_user ID: {tool_call_id}")
-                        else: 
-                             print("[WebSocket WARNING] ask_user tool call missing ID!")
-                        question = json.loads(arguments).get("question", "")
-                        print(f"WebSocket sending ask_user_request: {question[:50]}...")
-                        await websocket.send_text(json.dumps({"type": "ask_user_request", "question": question}))
-                        stream_ended = True 
-                        break
-                    elif first_tool_name == "terminate":
-                        reason = json.loads(arguments).get("reason", "Task finished.")
-                        print(f"WebSocket sending terminate_request: {reason}")
-                        await websocket.send_text(json.dumps({"type": "terminate_request", "reason": reason}))
-                        stream_ended = True 
-                        break
-                    else:
-                        # Unknown tool requested?
-                        print(f"[WebSocket WARNING] Agent requested unknown tool: {first_tool_name}")
-                        await websocket.send_text(json.dumps({"type": "error", "content": f"Agent requested unknown tool: {first_tool_name}"}))
-                        stream_ended = True
-                        break
-                elif result_type == "error": # Handle explicit errors yielded by agent
-                    print(f"[WebSocket] Agent yielded error: {result.get('content')}")
-                    await websocket.send_text(json.dumps(result))
-                    stream_ended = True
-                    break 
-                else:
-                    print(f"[WebSocket WARNING] Unexpected dict result type from agent.step: {result_type} - {result}")
-            else:
-                 # Log unexpected type if neither matches
-                print(f"[WebSocket WARNING] Unexpected result type from agent.step: {type(result)} - {result}")
-        
-        # Send end signal ONLY if the stream wasn't already ended by a tool request/error
-        if not stream_ended:
-            await websocket.send_text(json.dumps({"type": "end", "content": ""}))
-            print("WebSocket sent stream end signal (agent step finished naturally).")
-            return True, final_cost_from_agent
-        else:
-             print("WebSocket stream ended due to tool request or error, not sending duplicate 'end'.")
-             # If it was ended by ask_user or terminate, the agent's turn is still considered finished
-             # Check if first_tool_name was set before comparing
-             if first_tool_name and (first_tool_name == "ask_user" or first_tool_name == "terminate"):
-                 return True, final_cost_from_agent
-             else: # Must be run_bash_command, server tool, or an error
-                 return False, final_cost_from_agent
-                 
-    except Exception as e:
-        print(f"Error during agent step execution or sending: {e}")
-        traceback.print_exc()
-        # Try to send error to client
-        try:
-            await websocket.send_text(json.dumps({"type": "error", "content": f"Error during agent processing: {str(e)}"}))
-        except Exception:
-            pass # Ignore if sending fails
-        # Indicate agent turn did not finish cleanly, cost might be None
-        return False, final_cost_from_agent
-
-# --- Transcription Function (Added here) ---
-async def get_transcription(audio_base64: str, file_format: str = "webm") -> str:
-    """
-    Transcribes audio using LiteLLM's atranscription.
-    Args:
-        audio_base64: Base64 encoded string of the audio data.
-        file_format: The format of the audio file (e.g., 'webm', 'mp3', 'wav').
-    Returns:
-        The transcribed text.
-    Raises:
-        HTTPException: If transcription fails.
-    """
-    print("[Transcription Service] Received audio data for transcription.")
-    temp_dir = "temp_audio"
-    os.makedirs(temp_dir, exist_ok=True)
-    temp_filename = f"{uuid.uuid4()}.{file_format}"
-    temp_filepath = os.path.join(temp_dir, temp_filename)
-
-    try:
-        try:
-            if ";base64," in audio_base64:
-                header, encoded = audio_base64.split(";base64,", 1)
-            else:
-                encoded = audio_base64
-            audio_bytes = base64.b64decode(encoded)
-            print(f"[Transcription Service] Decoded base64 audio ({len(audio_bytes)} bytes).")
-        except (base64.binascii.Error, ValueError, TypeError) as decode_err:
-            print(f"[Transcription Service Error] Failed to decode base64 audio: {decode_err}")
-            raise HTTPException(status_code=400, detail=f"Invalid base64 audio data: {decode_err}")
-
-        async with aiofiles.open(temp_filepath, "wb") as temp_file:
-            await temp_file.write(audio_bytes)
-        print(f"[Transcription Service] Saved temporary audio file: {temp_filepath}")
-
-        try:
-             # Create the tuple for litellm.atranscription
-             file_tuple = (temp_filename, audio_bytes, f"audio/{file_format}")
-             print(f"[Transcription Service] Calling LiteLLM with file tuple: ({temp_filename}, <bytes>, 'audio/{file_format}')")
-             # Pass the tuple instead of the path
-             response = await litellm.atranscription(model="whisper-1", file=file_tuple)
-             if hasattr(response, 'text'): transcribed_text = response.text
-             elif isinstance(response, dict) and 'text' in response: transcribed_text = response['text']
-             else: transcribed_text = str(response); print("[Transcription Service Warning] Unexpected response structure...")
-             print(f"[Transcription Service] Transcription successful: {transcribed_text[:100]}...")
-             return transcribed_text
-        except Exception as transcription_err:
-            print(f"[Transcription Service Error] LiteLLM transcription failed: {transcription_err}")
-            traceback.print_exc()
-            raise HTTPException(status_code=500, detail=f"Transcription failed: {transcription_err}")
-
-    finally:
-        if os.path.exists(temp_filepath):
-            try: os.remove(temp_filepath); print(f"[Transcription Service] Cleaned temp file.")
-            except OSError as cleanup_err: print(f"[Transcription Service Warning] Failed to delete temp file: {cleanup_err}")
-# --- End Transcription Function ---
-
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    print("WebSocket connection established.")
-    # Check if OPENAI_API_KEY is present (as LiteLLM relies on it)
-    if not os.getenv("OPENAI_API_KEY"):
-        print("WebSocket closing: OPENAI_API_KEY not found for LiteLLM.")
+    print("WebSocket connection establishing...")
+
+    # --- Get chat_id and Validate --- 
+    chat_id = websocket.query_params.get("chat_id")
+    if not chat_id:
+        print("WebSocket closing: chat_id missing from query parameters.")
+        await websocket.send_text(json.dumps({"type": "error", "content": "chat_id query parameter is required."}))
+        await websocket.close(code=1008)
+        return
+    try: # Validate chat_id format (e.g., UUID) if desired
+        uuid.UUID(chat_id)
+    except ValueError:
+        print(f"WebSocket closing: Invalid chat_id format: {chat_id}")
+        await websocket.send_text(json.dumps({"type": "error", "content": "Invalid chat_id format."}))
+        await websocket.close(code=1008)
+        return
+    print(f"WebSocket attempting connection for chat_id: {chat_id}")
+    # --- End get/validate chat_id --- 
+
+    # Check for necessary API keys (moved up for earlier exit)
+    if not os.getenv("OPENAI_API_KEY"): # Or other required keys based on your agent
+        print(f"WebSocket closing ({chat_id}): Backend LLM provider key not configured.")
         await websocket.send_text(json.dumps({"type": "error", "content": "Backend LLM provider key not configured."}))
         await websocket.close(code=1008)
         return
-        
-    # Create an agent instance for this connection
-    agent = ChatAgent() # Client no longer needed
-    print(f"ChatAgent instance created for WebSocket {websocket.client}")
-        
-    websocket_id = str(websocket.client) # Get websocket ID for this connection
-    print(f"WebSocket assigned ID: {websocket_id}")
 
-    # --- Session Cost Tracking --- 
-    session_total_cost = 0.0 # Initialize total cost for the session
-    # --- End Cost Tracking (Initialization) --- 
+    agent: ChatAgent
+    session_total_cost: float
+    connection_key = str(websocket.client) # Unique identifier for this specific connection
+
+    # --- Load or Create Chat State from DB --- 
+    try:
+        async with aiosqlite.connect(DATABASE_URL) as db:
+            db.row_factory = aiosqlite.Row # Access columns by name
+            async with db.execute("SELECT * FROM chats WHERE chat_id = ?", (chat_id,)) as cursor:
+                chat_data = await cursor.fetchone()
+
+            now = datetime.datetime.now(datetime.timezone.utc)
+            
+            if chat_data:
+                print(f"Loading existing chat: {chat_id}")
+                session_total_cost = chat_data['total_cost'] or 0.0
+                current_model = chat_data['current_model'] # Can be None
+                agent = ChatAgent(model_name=current_model) # Initialize agent, optionally with stored model (FIXED)
+                
+                # Load history
+                async with db.execute("SELECT role, content, tool_call_id FROM messages WHERE chat_id = ? ORDER BY timestamp ASC", (chat_id,)) as msg_cursor:
+                    async for row in msg_cursor:
+                        content = row['content']
+                        # Attempt to parse content if it looks like JSON (for user/tool roles)
+                        parsed_content: Any = content
+                        if row['role'] in ["user", "tool"] or (row['role'] == 'assistant' and 'tool_calls' in content):
+                             try:
+                                 parsed_content = json.loads(content)
+                             except json.JSONDecodeError:
+                                 print(f"[DB Load Warning] Could not parse message content for chat {chat_id}, role {row['role']}. Treating as string.")
+                                 # Keep content as string if parsing fails
+                        
+                        agent.add_message_to_memory(role=row['role'], content=parsed_content, tool_call_id=row['tool_call_id'])
+                print(f"Loaded {len(agent.memory)} messages from history for chat {chat_id}")
+                
+                # Update last active time
+                await db.execute("UPDATE chats SET last_active_at = ? WHERE chat_id = ?", (now, chat_id))
+                await db.commit()
+            
+            else:
+                print(f"Creating new chat: {chat_id}")
+                agent = ChatAgent() # Create agent with default model
+                session_total_cost = 0.0
+                current_model = agent.model_name # Get default model (FIXED)
+                
+                await db.execute(
+                    "INSERT INTO chats (chat_id, created_at, last_active_at, current_model, total_cost) VALUES (?, ?, ?, ?, ?)",
+                    (chat_id, now, now, current_model, session_total_cost)
+                )
+                await db.commit()
+                
+        # Store in active connections
+        ACTIVE_CONNECTIONS[connection_key] = {
+            "chat_id": chat_id,
+            "agent": agent,
+            "total_cost": session_total_cost
+        }
+        print(f"WebSocket connection {connection_key} established for chat_id: {chat_id}")
+        
+    except Exception as db_error:
+        print(f"[DB Error] Failed to load/create chat state for {chat_id}: {db_error}")
+        traceback.print_exc()
+        await websocket.send_text(json.dumps({"type": "error", "content": "Failed to initialize chat session."}))
+        await websocket.close(code=1011)
+        return
+    # --- End Load or Create Chat State ---
 
     try:
         while True:
             # Receive message from Electron client
             data = await websocket.receive_text()
-            print(f"WebSocket received: {data[:200]}...")
+            connection_key = str(websocket.client)
+            
+            # --- Retrieve connection state --- 
+            connection_state = ACTIVE_CONNECTIONS.get(connection_key)
+            if not connection_state:
+                print(f"[WebSocket Error] Received message from unknown connection: {connection_key}. Closing.")
+                await websocket.close(code=1011)
+                break # Exit the while loop
+                
+            agent = connection_state["agent"]
+            chat_id = connection_state["chat_id"] # Get chat_id for logging
+            current_total_cost = connection_state["total_cost"] # Get current cost
+            # --- End retrieve state --- 
+            
+            print(f"WebSocket ({chat_id}) received: {data[:200]}...")
             try:
                 message_data = json.loads(data)
                 message_type = message_data.get("type")
 
                 if message_type == "user_message":
+                    # ... (logic for getting text, screenshot, context remains same)
                     text = message_data.get("text")
                     screenshot_data_url = message_data.get("screenshot_data_url")
-                    # --- Get context text --- 
-                    context_text = message_data.get("context_text") # Can be None or empty string
-                    # --- End get context --- 
-
+                    context_text = message_data.get("context_text")
+                    
                     if not text:
                         await websocket.send_text(json.dumps({"type": "error", "content": "Missing text in user_message"}))
                         continue
                     
-                    print(f"[WebSocket] Processing user_message: {text[:50]}... Context provided: {bool(context_text)}")
+                    print(f"[WebSocket ({chat_id})] Processing user_message: {text[:50]}...")
                     
-                    # --- Check if responding to ask_user --- 
+                    # ... (logic for adding message to agent memory remains same, using retrieved agent) ...
                     if agent.pending_ask_user_tool_call_id:
-                        print(f"[WebSocket] Treating user message as response to ask_user ID: {agent.pending_ask_user_tool_call_id}")
-                        # Add as TOOL message (DO NOT prepend context here)
-                        agent.add_message_to_memory(
-                            role="tool",
-                            tool_call_id=agent.pending_ask_user_tool_call_id,
-                            content=text
-                        )
-                        agent.pending_ask_user_tool_call_id = None # Clear the pending ID
+                        tool_call_id = agent.pending_ask_user_tool_call_id
+                        agent.add_message_to_memory(role="tool", tool_call_id=tool_call_id, content=text)
+                        await save_message_to_db(chat_id=chat_id, role="tool", content=text, tool_call_id=tool_call_id)
+                        agent.pending_ask_user_tool_call_id = None
                     else:
-                        # --- Prepare user content, potentially prepending context --- 
+                        # ... prepare user content ...
                         final_text_content = text
-                        if context_text and context_text.strip(): # Check if context exists and is not just whitespace
+                        if context_text and context_text.strip(): 
                             final_text_content = f"Based on this context:\n```\n{context_text}\n```\n\n{text}"
-                            print("[WebSocket] Prepended context to user message.")
-                        
-                        # Add as standard USER message
                         user_content: List[Dict[str, Any]] = [{"type": "text", "text": final_text_content}]
                         if screenshot_data_url:
                             user_content.append({
@@ -303,166 +190,191 @@ async def websocket_endpoint(websocket: WebSocket):
                                 "image_url": {"url": screenshot_data_url}
                             })
                         agent.add_message_to_memory(role="user", content=user_content)
-                        # --- End message preparation and adding --- 
-                    # --- End message adding logic ---
+                        await save_message_to_db(chat_id=chat_id, role="user", content=user_content)
                     
-                    # --- Run the agent step --- 
-                    agent_finished_turn, step_cost = await run_agent_step_and_send(agent, websocket)
+                    # --- Run the agent step (using retrieved agent) --- 
+                    agent_finished_turn, step_cost = await run_agent_step_and_send(
+                        agent, websocket, PENDING_AGENT_QUESTIONS # Pass dict
+                    )
                     if step_cost is not None:
-                        session_total_cost += step_cost
-                        print(f"[WebSocket] LLM call cost: ${step_cost:.6f}, Session total: ${session_total_cost:.6f}")
-                        # Send cost update to frontend
+                        connection_state["total_cost"] += step_cost
+                        new_total_cost = connection_state["total_cost"]
+                        # --- Update DB --- 
+                        await update_chat_metadata_in_db(chat_id, total_cost=new_total_cost)
+                        # --- End DB Update --- 
+                        print(f"[WebSocket ({chat_id})] LLM call cost: ${step_cost:.6f}, Session total: ${new_total_cost:.6f}")
                         await websocket.send_text(json.dumps({
                             "type": "cost_update",
-                            "total_cost": session_total_cost
+                            "total_cost": new_total_cost
                         }))
                     else:
-                        print("[WebSocket WARNING] Agent step finished but no cost was returned.")
+                        print(f"[WebSocket ({chat_id}) WARNING] Agent step finished but no cost was returned.")
                         
                 elif message_type == "tool_result":
+                    # ... (logic for getting results remains same) ...
                     results = message_data.get("results")
                     if not results or not isinstance(results, list): 
                         await websocket.send_text(json.dumps({"type": "error", "content": "Missing or invalid results in tool_result message"}))
                         continue
                         
-                    print(f"[WebSocket] Processing tool_result for {len(results)} tool(s)...")
-                    # --- Add tool results to agent memory --- 
+                    print(f"[WebSocket ({chat_id})] Processing tool_result for {len(results)} tool(s)...")
+                    # ... (logic for adding results to agent memory remains same, using retrieved agent) ...
                     for result in results:
-                         if result.get("tool_call_id"):
-                             agent.add_message_to_memory(role="tool", 
-                                                       tool_call_id=result["tool_call_id"], 
-                                                       content=str(result.get("content", ""))) # Ensure content is string
+                         tool_call_id = result.get("tool_call_id")
+                         content = str(result.get("content", ""))
+                         if tool_call_id:
+                             agent.add_message_to_memory(role="tool", tool_call_id=tool_call_id, content=content)
+                             await save_message_to_db(chat_id=chat_id, role="tool", content=content, tool_call_id=tool_call_id)
                          else:
-                             print("[WebSocket WARNING] Received tool_result missing tool_call_id")
+                             print(f"[WebSocket ({chat_id}) WARNING] Received tool_result missing tool_call_id")
                      
-                    # --- DEBUG: Print memory after adding tool result --- 
-                    print(f"[WebSocket DEBUG] Agent memory AFTER adding tool results:")
+                    print(f"[WebSocket ({chat_id}) DEBUG] Agent memory AFTER adding tool results:")
                     print(json.dumps(agent.memory, indent=2))
-                    # --- END DEBUG --- 
                     
-                    # --- Run the agent step AGAIN with the new tool results in memory --- 
-                    print("[WebSocket] Triggering agent step after receiving tool results...")
-                    agent_finished_turn, step_cost = await run_agent_step_and_send(agent, websocket)
+                    # --- Run agent step again (using retrieved agent) --- 
+                    print(f"[WebSocket ({chat_id})] Triggering agent step after receiving tool results...")
+                    agent_finished_turn, step_cost = await run_agent_step_and_send(
+                        agent, websocket, PENDING_AGENT_QUESTIONS # Pass dict
+                    )
                     if step_cost is not None:
-                        session_total_cost += step_cost
-                        print(f"[WebSocket] LLM call cost: ${step_cost:.6f}, Session total: ${session_total_cost:.6f}")
-                        # Send cost update to frontend
+                        connection_state["total_cost"] += step_cost
+                        new_total_cost = connection_state["total_cost"]
+                        # --- Update DB --- 
+                        await update_chat_metadata_in_db(chat_id, total_cost=new_total_cost)
+                        # --- End DB Update --- 
+                        print(f"[WebSocket ({chat_id})] LLM call cost: ${step_cost:.6f}, Session total: ${new_total_cost:.6f}")
                         await websocket.send_text(json.dumps({
                             "type": "cost_update",
-                            "total_cost": session_total_cost
+                            "total_cost": new_total_cost
                         }))
                     else:
-                        print("[WebSocket WARNING] Agent step finished but no cost was returned.")
+                        print(f"[WebSocket ({chat_id}) WARNING] Agent step finished but no cost was returned.")
                     
                 elif message_type == "user_response":
-                    # --- Handle response for agent's question --- 
+                    # ... (logic for getting request_id, answer remains same) ...
                     request_id = message_data.get("request_id")
                     answer = message_data.get("answer")
-                    if not request_id or answer is None: # Check if answer is present (can be empty string)
+                    if not request_id or answer is None: 
                         await websocket.send_text(json.dumps({"type": "error", "content": "Missing request_id or answer in user_response"}))
                         continue
 
-                    print(f"[WebSocket] Processing user_response for request_id: {request_id}")
-                    # Look up the future in the shared dictionary
-                    future = PENDING_AGENT_QUESTIONS.get(websocket_id, {}).get(request_id)
+                    print(f"[WebSocket ({chat_id})] Processing user_response for request_id: {request_id}")
+                    # --- Use connection_key for PENDING_AGENT_QUESTIONS --- 
+                    future = PENDING_AGENT_QUESTIONS.get(connection_key, {}).get(request_id)
 
                     if future and not future.done():
-                        print(f"[WebSocket] Found pending future for {request_id}. Setting result.")
-                        future.set_result(answer) # Resolve the future, unblocking the agent
-                        # DO NOT call run_agent_step_and_send here - agent resumes automatically
+                        print(f"[WebSocket ({chat_id})] Found pending future for {request_id}. Setting result.")
+                        future.set_result(answer) 
                     elif future and future.done():
-                        print(f"[WebSocket WARNING] Received user_response for already completed request_id: {request_id}")
-                        # Optionally notify client? Or just ignore.
+                        print(f"[WebSocket ({chat_id}) WARNING] Received user_response for already completed request_id: {request_id}")
                     else:
-                        print(f"[WebSocket WARNING] Received user_response for unknown or expired request_id: {request_id} for websocket {websocket_id}")
+                        print(f"[WebSocket ({chat_id}) WARNING] Received user_response for unknown or expired request_id: {request_id} for connection {connection_key}")
                         await websocket.send_text(json.dumps({"type": "warning", "content": f"Received response for unknown or expired request ID {request_id}."}))
-                    # --- End user_response handling ---
+                    # --- End user_response handling --- 
                     
-                # --- Handle setting LLM model --- 
                 elif message_type == "set_llm_model":
+                    # ... (logic for getting model_name remains same) ...
                     model_name = message_data.get("model_name")
                     if model_name and isinstance(model_name, str):
-                        print(f"[WebSocket] Received request to set model to: {model_name}")
-                        agent.set_model(model_name) # Use existing agent method
-                        # Optionally send confirmation back?
-                        # await websocket.send_text(json.dumps({"type": "info", "content": f"Model set to {model_name}"}))
+                        print(f"[WebSocket ({chat_id})] Received request to set model to: {model_name}")
+                        agent.set_model(model_name) # Use retrieved agent
+                        # --- Update DB --- 
+                        current_total_cost = connection_state["total_cost"] # Get current cost from connection state
+                        await update_chat_metadata_in_db(chat_id, total_cost=current_total_cost, current_model=model_name)
+                        # --- End DB Update --- 
                     else:
-                        print(f"[WebSocket WARNING] Received invalid set_llm_model message: {message_data}")
+                        print(f"[WebSocket ({chat_id}) WARNING] Received invalid set_llm_model message: {message_data}")
                         await websocket.send_text(json.dumps({"type": "error", "content": "Invalid or missing model_name in set_llm_model message"}))
-                # --- End set_llm_model handling ---
-
-                # --- Handle Audio Input --- 
+                
                 elif message_type == "audio_input":
+                    # ... (logic for getting audio data, format remains same) ...
                     audio_data_base64 = message_data.get("audio_data")
-                    audio_format = message_data.get("format", "webm") # Default to webm if not provided
+                    audio_format = message_data.get("format", "webm")
                     if not audio_data_base64:
                         await websocket.send_text(json.dumps({"type": "error", "content": "Missing audio_data in audio_input message"}))
                         continue
                     
-                    print(f"[WebSocket] Processing audio_input (format: {audio_format})...")
+                    print(f"[WebSocket ({chat_id})] Processing audio_input (format: {audio_format})...")
+                    # ... (transcription call and error handling remain same) ...
                     try:
-                        # Call the transcription function
                         transcription_text = await get_transcription(audio_data_base64, audio_format)
-                        print(f"[WebSocket] Transcription successful: '{transcription_text[:100]}...'")
-                        
-                        # --- Send transcription result back to client --- 
+                        print(f"[WebSocket ({chat_id})] Transcription successful: '{transcription_text[:100]}...'")
                         await websocket.send_text(json.dumps({
                             "type": "transcription_result",
                             "text": transcription_text
                         }))
-                        print(f"[WebSocket] Sent transcription_result to client.")
-                        # --- End sending transcription result --- 
-
+                        print(f"[WebSocket ({chat_id})] Sent transcription_result to client.")
                     except HTTPException as http_exc:
-                        # Forward transcription errors back to client
-                        print(f"[WebSocket Error] Transcription HTTP Exception: {http_exc.detail}")
+                        print(f"[WebSocket ({chat_id}) Error] Transcription HTTP Exception: {http_exc.detail}")
                         await websocket.send_text(json.dumps({"type": "error", "content": f"Transcription Error: {http_exc.detail}"}))
                     except Exception as trans_exc:
-                        # Catch any other unexpected errors during transcription
-                        print(f"[WebSocket Error] Unexpected error during transcription processing: {trans_exc}")
+                        print(f"[WebSocket ({chat_id}) Error] Unexpected error during transcription processing: {trans_exc}")
                         traceback.print_exc()
                         await websocket.send_text(json.dumps({"type": "error", "content": f"Unexpected transcription error: {trans_exc}"}))
-                # --- End Audio Input Handling ---
-
+                
                 else:
-                    print(f"[WebSocket WARNING] Invalid message type received: {message_type}")
+                    print(f"[WebSocket ({chat_id}) WARNING] Invalid message type received: {message_type}")
                     await websocket.send_text(json.dumps({"type": "error", "content": f"Invalid message type received: {message_type}"}))
 
             except json.JSONDecodeError:
-                print("WebSocket received invalid JSON")
+                print(f"WebSocket ({chat_id}) received invalid JSON")
                 await websocket.send_text(json.dumps({"type": "error", "content": "Invalid JSON received"}))
             except Exception as e:
-                # Print the full traceback
-                print(f"Error processing message via WebSocket (see traceback below):")
+                print(f"Error processing message via WebSocket ({chat_id}) (see traceback below):")
                 traceback.print_exc() 
                 error_message = str(e)
                 await websocket.send_text(json.dumps({"type": "error", "content": f"Error processing request: {error_message}"}))
 
     except WebSocketDisconnect:
-        print(f"WebSocket connection closed for {websocket.client}.")
+        print(f"WebSocket connection closed for {connection_key} (chat_id: {chat_id}).")
     except Exception as e:
-        # Catch potential errors during the receive loop itself
-        print(f"Unexpected WebSocket error for {websocket.client} (see traceback below):")
+        print(f"Unexpected WebSocket error for {connection_key} (chat_id: {chat_id}) (see traceback below):")
         traceback.print_exc()
-        # Attempt to close gracefully if possible
         try:
             await websocket.send_text(json.dumps({"type": "error", "content": f"Unexpected WebSocket error"}))
             await websocket.close(code=1011)
         except RuntimeError:
             pass # Already closed
     finally:
-        # --- Cleanup agent questions for this websocket when connection closes ---
-        if websocket_id in PENDING_AGENT_QUESTIONS:
-            print(f"[WebSocket Cleanup] Cleaning up pending questions for websocket {websocket_id} on disconnect.")
-            for request_id, future in PENDING_AGENT_QUESTIONS[websocket_id].items():
+        # --- Remove connection state --- 
+        if connection_key in ACTIVE_CONNECTIONS:
+            removed_chat_id = ACTIVE_CONNECTIONS[connection_key].get("chat_id", "unknown")
+            del ACTIVE_CONNECTIONS[connection_key]
+            print(f"Removed connection state for {connection_key} (chat_id: {removed_chat_id}). Active connections: {len(ACTIVE_CONNECTIONS)}")
+        # --- End remove connection state ---
+
+        # --- Cleanup agent questions for this connection (using connection_key) ---
+        if connection_key in PENDING_AGENT_QUESTIONS: # Use connection_key matching ACTIVE_CONNECTIONS
+            print(f"[WebSocket Cleanup] Cleaning up pending questions for connection {connection_key} on disconnect.")
+            for request_id, future in PENDING_AGENT_QUESTIONS[connection_key].items():
                 if not future.done():
                     future.cancel("WebSocket connection closed.")
-            del PENDING_AGENT_QUESTIONS[websocket_id]
+            del PENDING_AGENT_QUESTIONS[connection_key]
         # --- End Cleanup ---
 
 @app.get("/") # Basic root endpoint for testing
 async def read_root():
     return {"message": "FastAPI backend is running (WebSocket at /ws)"}
+
+# --- NEW: Endpoint to list existing chats --- 
+@app.get("/chats")
+async def list_chats():
+    """Retrieves a list of chats from the database, ordered by last activity."""
+    chats = []
+    try:
+        async with aiosqlite.connect(DATABASE_URL) as db:
+            db.row_factory = aiosqlite.Row # Access columns by name
+            async with db.execute(
+                "SELECT chat_id, title, created_at, last_active_at, current_model, total_cost FROM chats ORDER BY last_active_at DESC"
+            ) as cursor:
+                async for row in cursor:
+                    chats.append(dict(row)) # Convert Row object to dictionary
+        return chats
+    except Exception as e:
+        print(f"[DB Error] Failed to list chats: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="Failed to retrieve chat list.")
+# --- End List Chats Endpoint ---
 
 # To run this: 
 # cd backend

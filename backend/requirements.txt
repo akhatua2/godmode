@@ -12,3 +12,4 @@ langchain
 langchain-openai
 browser-use
 aiofiles>=23.2.1
+aiosqlite

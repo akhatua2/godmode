@@ -8,6 +8,7 @@ import type { ToolCall, CostUpdatePayload } from './types'; // Import ToolCall t
 import { executeTool } from './tool-executor'; // Import the executor function
 // Use ESM import for electron-squirrel-startup
 import SquirrelStartup from 'electron-squirrel-startup';
+import { v4 as uuidv4 } from 'uuid'; // ADDED
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -20,8 +21,13 @@ if (SquirrelStartup) {
 
 let mainWindow: BrowserWindow | null = null;
 let ws: WebSocket | null = null;
-const backendUrl = 'ws://127.0.0.1:8000/ws';
+const backendBaseUrl = 'ws://127.0.0.1:8000/ws'; // Base URL
 let isStreaming = false; // Flag to track if we are currently streaming a response
+
+// --- Generate and store Chat ID --- 
+let currentChatId: string = uuidv4(); // Generate initial chat ID
+console.log(`[Main] Generated initial chat ID: ${currentChatId}`);
+// --- End Chat ID --- 
 
 // --- Store pending tool calls --- 
 const pendingToolCalls = new Map<string, ToolCall>();
@@ -30,8 +36,11 @@ const pendingToolCalls = new Map<string, ToolCall>();
 // const fnKey = 'Fn'; // REMOVED - Cannot be registered directly
 
 function connectWebSocket() {
-  console.log('Attempting to connect to WebSocket:', backendUrl);
-  ws = new WebSocket(backendUrl);
+  // --- Construct URL with Chat ID --- 
+  const backendUrlWithChatId = `${backendBaseUrl}?chat_id=${currentChatId}`;
+  console.log('Attempting to connect to WebSocket:', backendUrlWithChatId); // Log the full URL
+  ws = new WebSocket(backendUrlWithChatId); // Use the URL with chat ID
+  // --- End URL Construction ---
 
   ws.on('open', () => {
     console.log('WebSocket connection established with backend.');
