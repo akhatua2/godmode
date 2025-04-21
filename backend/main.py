@@ -2,6 +2,10 @@ import os
 import json
 import traceback
 import asyncio # Added for future handling
+import base64 # Added
+import aiofiles # Added
+import uuid # Added
+import litellm # Added
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -174,6 +178,61 @@ async def run_agent_step_and_send(agent: ChatAgent, websocket: WebSocket) -> Tup
         # Indicate agent turn did not finish cleanly, cost might be None
         return False, final_cost_from_agent
 
+# --- Transcription Function (Added here) ---
+async def get_transcription(audio_base64: str, file_format: str = "webm") -> str:
+    """
+    Transcribes audio using LiteLLM's atranscription.
+    Args:
+        audio_base64: Base64 encoded string of the audio data.
+        file_format: The format of the audio file (e.g., 'webm', 'mp3', 'wav').
+    Returns:
+        The transcribed text.
+    Raises:
+        HTTPException: If transcription fails.
+    """
+    print("[Transcription Service] Received audio data for transcription.")
+    temp_dir = "temp_audio"
+    os.makedirs(temp_dir, exist_ok=True)
+    temp_filename = f"{uuid.uuid4()}.{file_format}"
+    temp_filepath = os.path.join(temp_dir, temp_filename)
+
+    try:
+        try:
+            if ";base64," in audio_base64:
+                header, encoded = audio_base64.split(";base64,", 1)
+            else:
+                encoded = audio_base64
+            audio_bytes = base64.b64decode(encoded)
+            print(f"[Transcription Service] Decoded base64 audio ({len(audio_bytes)} bytes).")
+        except (base64.binascii.Error, ValueError, TypeError) as decode_err:
+            print(f"[Transcription Service Error] Failed to decode base64 audio: {decode_err}")
+            raise HTTPException(status_code=400, detail=f"Invalid base64 audio data: {decode_err}")
+
+        async with aiofiles.open(temp_filepath, "wb") as temp_file:
+            await temp_file.write(audio_bytes)
+        print(f"[Transcription Service] Saved temporary audio file: {temp_filepath}")
+
+        try:
+             # Create the tuple for litellm.atranscription
+             file_tuple = (temp_filename, audio_bytes, f"audio/{file_format}")
+             print(f"[Transcription Service] Calling LiteLLM with file tuple: ({temp_filename}, <bytes>, 'audio/{file_format}')")
+             # Pass the tuple instead of the path
+             response = await litellm.atranscription(model="whisper-1", file=file_tuple)
+             if hasattr(response, 'text'): transcribed_text = response.text
+             elif isinstance(response, dict) and 'text' in response: transcribed_text = response['text']
+             else: transcribed_text = str(response); print("[Transcription Service Warning] Unexpected response structure...")
+             print(f"[Transcription Service] Transcription successful: {transcribed_text[:100]}...")
+             return transcribed_text
+        except Exception as transcription_err:
+            print(f"[Transcription Service Error] LiteLLM transcription failed: {transcription_err}")
+            traceback.print_exc()
+            raise HTTPException(status_code=500, detail=f"Transcription failed: {transcription_err}")
+
+    finally:
+        if os.path.exists(temp_filepath):
+            try: os.remove(temp_filepath); print(f"[Transcription Service] Cleaned temp file.")
+            except OSError as cleanup_err: print(f"[Transcription Service Warning] Failed to delete temp file: {cleanup_err}")
+# --- End Transcription Function ---
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -331,7 +390,40 @@ async def websocket_endpoint(websocket: WebSocket):
                         print(f"[WebSocket WARNING] Received invalid set_llm_model message: {message_data}")
                         await websocket.send_text(json.dumps({"type": "error", "content": "Invalid or missing model_name in set_llm_model message"}))
                 # --- End set_llm_model handling ---
-                
+
+                # --- Handle Audio Input --- 
+                elif message_type == "audio_input":
+                    audio_data_base64 = message_data.get("audio_data")
+                    audio_format = message_data.get("format", "webm") # Default to webm if not provided
+                    if not audio_data_base64:
+                        await websocket.send_text(json.dumps({"type": "error", "content": "Missing audio_data in audio_input message"}))
+                        continue
+                    
+                    print(f"[WebSocket] Processing audio_input (format: {audio_format})...")
+                    try:
+                        # Call the transcription function
+                        transcription_text = await get_transcription(audio_data_base64, audio_format)
+                        print(f"[WebSocket] Transcription successful: '{transcription_text[:100]}...'")
+                        
+                        # --- Send transcription result back to client --- 
+                        await websocket.send_text(json.dumps({
+                            "type": "transcription_result",
+                            "text": transcription_text
+                        }))
+                        print(f"[WebSocket] Sent transcription_result to client.")
+                        # --- End sending transcription result --- 
+
+                    except HTTPException as http_exc:
+                        # Forward transcription errors back to client
+                        print(f"[WebSocket Error] Transcription HTTP Exception: {http_exc.detail}")
+                        await websocket.send_text(json.dumps({"type": "error", "content": f"Transcription Error: {http_exc.detail}"}))
+                    except Exception as trans_exc:
+                        # Catch any other unexpected errors during transcription
+                        print(f"[WebSocket Error] Unexpected error during transcription processing: {trans_exc}")
+                        traceback.print_exc()
+                        await websocket.send_text(json.dumps({"type": "error", "content": f"Unexpected transcription error: {trans_exc}"}))
+                # --- End Audio Input Handling ---
+
                 else:
                     print(f"[WebSocket WARNING] Invalid message type received: {message_type}")
                     await websocket.send_text(json.dumps({"type": "error", "content": f"Invalid message type received: {message_type}"}))

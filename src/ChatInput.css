@@ -240,3 +240,50 @@ background-color: rgba(0, 255, 0, 0.2); /* Example: translucent green */
   gap: 6px; /* Spacing between cost and selector */
 }
 /* --- End Bottom Right Wrapper --- */
+
+/* --- Input Row Layout --- */
+.chat-input-main-row {
+  display: flex;
+  align-items: flex-end; /* Align items to bottom for better textarea alignment */
+  gap: 8px; /* Space between mic and textarea */
+}
+
+/* --- Microphone Button Styles --- */
+.mic-button {
+  background: none;
+  border: none;
+  padding: 4px 8px; /* Adjust padding as needed */
+  cursor: pointer;
+  font-size: 1.2rem; /* Adjust icon size */
+  color: #6b7280; /* Tailwind gray-500 */
+  transition: color 0.2s ease;
+  align-self: center; /* Vertically center mic button in the row */
+}
+
+.mic-button:hover:not(:disabled) {
+  color: #1f2937; /* Tailwind gray-800 */
+}
+
+.mic-button.recording {
+  color: #ef4444; /* Tailwind red-500 */
+  animation: pulse 1.5s infinite ease-in-out;
+}
+
+.mic-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.15);
+  }
+}
+
+/* Adjust textarea within the row */
+.chat-input-main-row .chat-input-textarea {
+  flex-grow: 1; /* Allow textarea to take remaining space */
+}

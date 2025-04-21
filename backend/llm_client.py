@@ -1,7 +1,7 @@
 import json
 import asyncio
 import litellm # Import LiteLLM
-from typing import List, Dict, Any, AsyncGenerator, Union, Optional, Callable # Removed Tuple
+from typing import List, Dict, Any, AsyncGenerator, Union, Optional, Callable, Tuple # Added Tuple
 
 # Import necessary OpenAI types
 # Remove OpenAI client import
@@ -14,7 +14,7 @@ async def get_llm_response_stream(
     model_name: str, 
     messages: List[Dict[str, Any]],
     temperature: float = 0.7, # Optional: Add temperature or other parameters
-) -> AsyncGenerator[Union[ChatCompletionChunk, Dict[str, str]], None]:
+) -> AsyncGenerator[Union[ChatCompletionChunk, Dict[str, str], Tuple[str, float]], None]: # Added Tuple[str, float]
     """Calls the LLM API via LiteLLM and streams back the response chunks or an error dict."""
     
     print(f"[LLM Client - LiteLLM] Requesting completion from {model_name}...")

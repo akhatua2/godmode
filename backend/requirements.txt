@@ -1,4 +1,4 @@
-fastapi
+fastapi>=0.100.0
 uvicorn[standard]
 python-dotenv
 openai
@@ -11,3 +11,4 @@ langchain-core
 langchain
 langchain-openai
 browser-use
+aiofiles>=23.2.1

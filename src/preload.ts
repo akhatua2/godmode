@@ -34,6 +34,9 @@ let triggerSendMessageListener: ((event: IpcRendererEvent) => void) | null = nul
 // --- Listener for Paste from Clipboard --- 
 let selectedTextContextListener: ((event: IpcRendererEvent, content: string) => void) | null = null;
 
+// --- Listener for Transcription Result --- 
+let transcriptionResultListener: ((event: IpcRendererEvent, text: string) => void) | null = null;
+
 // --- electronAPI Definition ---
 const electronAPI = {
   sendMessage: (text: string, includeScreenshot: boolean, contextText?: string | null) => {
@@ -155,16 +158,20 @@ const electronAPI = {
       ipcRenderer.send('set-llm-model', modelName);
   },
 
-  // --- Global Paste Listener Setup ---
-  // Feature removed: CommandOrControl+I paste
-  // onPasteFromGlobalShortcut: (callback: (event: IpcRendererEvent, content: string) => void) => {
-      // Define a unique listener variable
-      // const globalPasteListener = (event: IpcRendererEvent, content: string) => callback(event, content);
-      // Remove listener logic might need adjustment if multiple listeners are intended,
-      // but for this case, we assume only one listener setup from App.tsx.
-      // ipcRenderer.removeAllListeners('paste-from-global-shortcut'); // Remove previous before adding
-      // ipcRenderer.on('paste-from-global-shortcut', globalPasteListener);
-  // }
+  // --- Function to send audio data --- 
+  sendAudioInput: (audioData: string, format: string) => {
+      console.log(`[Preload] Sending send-audio-input IPC (format: ${format})`);
+      ipcRenderer.send('send-audio-input', { audioData, format });
+  },
+  
+  // --- Listener for transcription result --- 
+  onTranscriptionResult: (callback: (event: IpcRendererEvent, text: string) => void) => {
+      if (transcriptionResultListener) {
+          ipcRenderer.removeListener('transcription-result-from-main', transcriptionResultListener);
+      }
+      transcriptionResultListener = callback;
+      ipcRenderer.on('transcription-result-from-main', transcriptionResultListener);
+  },
 };
 
 // --- cleanup API Definition ---
@@ -262,13 +269,13 @@ const cleanupAPI = {
         }
     },
 
-    // --- Global Paste Remover ---
-    // Feature removed: CommandOrControl+I paste
-    // removePasteFromGlobalShortcutListener: () => {
-        // No specific listener variable stored, so remove all for this channel
-        // ipcRenderer.removeAllListeners('paste-from-global-shortcut');
-        // console.log("[Cleanup] Removed paste-from-global-shortcut listeners.")
-    // }
+    // --- Cleanup for Transcription Listener ---
+    removeTranscriptionResultListener: () => {
+        if (transcriptionResultListener) {
+            ipcRenderer.removeListener('transcription-result-from-main', transcriptionResultListener);
+            transcriptionResultListener = null;
+        }
+    },
 };
 
 // --- Expose to Renderer --- 

@@ -87,6 +87,9 @@ export interface IElectronAPI {
   onSetSelectedTextContext: (callback: (event: IpcRendererEvent, content: string) => void) => void;
   // --- Function to set LLM model ---
   setLlmModel: (modelName: string) => void;
+  // --- Audio/Transcription --- 
+  sendAudioInput: (audioData: string, format: string) => void;
+  onTranscriptionResult: (callback: (event: IpcRendererEvent, text: string) => void) => void;
 }
 
 // Interface for the cleanup functions exposed by the preload script
@@ -112,6 +115,8 @@ export interface ICleanupAPI {
     removeTriggerSendMessageListener: () => void;
     // --- Paste from Clipboard Cleanup ---
     removeSetSelectedTextContextListener: () => void;
+    // --- Audio/Transcription Cleanup ---
+    removeTranscriptionResultListener: () => void;
 }
 
 // Extend the Window interface to include our exposed APIs

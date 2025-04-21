@@ -21,6 +21,8 @@ export interface IElectronAPI {
   sendToolResponse: (toolCallId: string, decision: 'approved' | 'denied', result?: string) => void;
   sendUserResponse: (requestId: string, answer: string) => void;
   onCostUpdate: (callback: (event: IpcRendererEvent, payload: CostUpdatePayload) => void) => void;
+  sendAudioInput: (audioData: string, format: string) => void;
+  onTranscriptionResult: (callback: (event: IpcRendererEvent, text: string) => void) => void;
 }
 
 export interface ICleanupAPI {
@@ -36,6 +38,7 @@ export interface ICleanupAPI {
   removeAgentQuestionListener: () => void;
   removeAgentStepUpdateListener: () => void;
   removeCostUpdateListener: () => void;
+  removeTranscriptionResultListener: () => void;
 }
 
 declare global {

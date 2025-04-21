@@ -78,7 +78,7 @@ class ChatAgent:
         self.memory.append(message)
 
     # Refactored step method - handles one LLM call based on current memory
-    async def step(self, callbacks: Optional[List[Callable]] = None) -> AsyncGenerator[str | Dict[str, Any], None]:
+    async def step(self, callbacks: Optional[List[Callable]] = None) -> AsyncGenerator[str | Dict[str, Any] | Tuple[str, float], None]:
         """Performs one step of interaction: gets LLM response and yields content/tool request."""
         print("[Agent] Executing agent step...")
         
@@ -279,9 +279,9 @@ class ChatAgent:
                         print("[Agent DEBUG] Buffered content wasn't a tool call, yielding it now")
                         yield buffered_content
                         
-                    if response_content:
-                        self.add_message_to_memory(role="assistant", content=response_content)
-                    else:
+                if response_content: 
+                    self.add_message_to_memory(role="assistant", content=response_content)
+                else:
                         # LLM finished with stop but no text and no tool calls
                         print("[Agent] Warning: Stream finished with stop reason but no text content and not parsed as tool call.")
                         self.add_message_to_memory(role="assistant", content=None)

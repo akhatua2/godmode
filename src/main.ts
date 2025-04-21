@@ -159,6 +159,14 @@ function connectWebSocket() {
                 break;
           // --- End Cost Update Handling ---
 
+          // --- Handle Transcription Result from Backend ---
+          case 'transcription_result':
+              const transcribedText = messageData.text;
+              console.log(`[IPC] Sending transcription-result-from-main: ${transcribedText.substring(0, 50)}...`);
+              mainWindow.webContents.send('transcription-result-from-main', transcribedText);
+              break;
+          // --- End Transcription Result Handling ---
+
           default:
              // Handle potential older format or unexpected messages gracefully
              // If we received something unexpected, assume any active stream ends
@@ -444,6 +452,30 @@ app.on('ready', () => {
     }
   });
   
+  // --- IPC Listener for Audio Input from Renderer ---
+  ipcMain.on('send-audio-input', (event, { audioData, format }: { audioData: string, format: string }) => {
+    console.log(`[IPC] Received send-audio-input (format: ${format})`);
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        try {
+            ws.send(JSON.stringify({
+                type: 'audio_input',
+                audio_data: audioData,
+                format: format
+            }));
+            console.log('[WebSocket Send] Sent audio_input to backend.');
+            // Optionally, notify the UI that transcription is in progress
+            // mainWindow?.webContents.send('backend-status-message', { statusType: 'info', text: 'Transcribing audio...' });
+        } catch (error) {
+            console.error('[WebSocket Send] Error sending audio_input:', error);
+            mainWindow?.webContents.send('backend-status-message', { statusType: 'error', text: 'Failed to send audio to backend.' });
+        }
+    } else {
+        console.error('[WebSocket Send] Cannot send audio_input, WebSocket not connected.');
+        mainWindow?.webContents.send('backend-status-message', { statusType: 'error', text: 'Cannot send audio, connection lost.' });
+    }
+  });
+  // --- End Audio Input Listener ---
+
   // --- Listener for tool response from renderer ---
   ipcMain.on('tool-response', (event, { toolCallId, decision, result }: { toolCallId: string, decision: 'approved' | 'denied', result?: string }) => {
       console.log(`[IPC] Received tool-response for ${toolCallId}. Decision: ${decision}`);

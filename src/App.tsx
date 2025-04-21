@@ -204,6 +204,16 @@ function App() {
     };
     // --- End Context Listener ---
 
+    // --- Listener for Transcription Result --- 
+    const handleTranscriptionResult = (event: Electron.IpcRendererEvent, text: string) => {
+      console.log('App: Transcription result received:', text);
+      // Append the transcribed text to the current input value
+      setInputValue(prev => (prev ? prev + ' ' : '') + text); 
+      // Optionally re-focus the input field
+      // textareaRef.current?.focus(); // Would need to pass ref to ChatInput
+    };
+    // --- End Transcription Listener ---
+
     // Set up the listeners using the exposed API
     // Feature removed: CommandOrControl+I paste
     // const handleGlobalPaste = (event: Electron.IpcRendererEvent, content: string) => {
@@ -230,6 +240,9 @@ function App() {
     // Add the new listener
     window.electronAPI.onSetSelectedTextContext(handleSetSelectedTextContext);
 
+    // Add the new listener
+    window.electronAPI.onTranscriptionResult(handleTranscriptionResult); // Register new listener
+
     // Cleanup function to remove the listeners when the component unmounts
     return () => {
       // Assume these cleanup functions will be exposed via preload
@@ -251,6 +264,9 @@ function App() {
 
       // Add cleanup for the new listener
       window.cleanup?.removeSetSelectedTextContextListener();
+
+      // Add cleanup for the new listener
+      window.cleanup?.removeTranscriptionResultListener(); // Add cleanup for new listener
     };
   }, []); // Empty dependency array means this runs once on mount
 

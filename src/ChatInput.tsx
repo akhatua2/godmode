@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import './ChatInput.css'; // Import the CSS
 
 // Updated Props
@@ -23,6 +23,12 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   // State for the screenshot toggle, default to false
   const [includeScreenshot, setIncludeScreenshot] = useState(false); 
+
+  // --- Audio Recording State & Refs --- 
+  const [isRecording, setIsRecording] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  // --- End Audio Recording State --- 
 
   // --- State and Handler for Model Selection (MOVED FROM APP) --- 
   const modelMap = {
@@ -81,7 +87,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     adjustTextareaHeight();
   }, [inputValue]);
 
-  const handleSendMessage = () => {
+  const handleSendMessage = useCallback(() => {
     // Read context from props
     if (!isProcessing && (inputValue.trim() || contextTexts.length > 0)) { // Allow sending if contextTexts array has items
       console.log(`[ChatInput] Sending message. Include screenshot: ${includeScreenshot}. Contexts: ${contextTexts.length}`);
@@ -96,7 +102,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         // Add a log here to see why it might not be sending
         console.log(`[ChatInput] handleSendMessage called via shortcut/enter, but conditions not met. isProcessing: ${isProcessing}, inputValue empty: ${!inputValue.trim()}`);
     }
-  };
+  }, [inputValue, includeScreenshot, isProcessing, contextTexts]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // Check for Enter without Shift OR Cmd/Ctrl + Enter
@@ -112,6 +118,63 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     e.preventDefault();
     handleSendMessage();
   };
+
+  // --- Audio Recording Handlers --- 
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const options = { mimeType: 'audio/webm;codecs=opus' }; // Specify MIME type
+      const mediaRecorder = new MediaRecorder(stream, options);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = []; // Clear previous chunks
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: options.mimeType });
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64String = reader.result as string;
+          // Remove the data URL prefix (e.g., "data:audio/webm;base64,")
+          const base64Data = base64String.split(',')[1]; 
+          console.log('[ChatInput] Sending audio data...');
+          window.electronAPI.sendAudioInput(base64Data, 'webm'); // Send base64 data
+        };
+        reader.readAsDataURL(audioBlob);
+        
+        // Clean up tracks
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+      console.log('[ChatInput] Recording started');
+    } catch (err) {
+      console.error('[ChatInput] Error starting recording:', err);
+      // Optionally show an error to the user
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      console.log('[ChatInput] Recording stopped');
+    }
+  };
+
+  const handleMicClick = () => {
+    if (isRecording) {
+      stopRecording();
+    } else {
+      startRecording();
+    }
+  };
+  // --- End Audio Recording Handlers --- 
 
   return (
     <form onSubmit={handleSubmit} className="p-2 border-gray-200">
@@ -148,21 +211,35 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         </div>
         {/* --- End Wrapper --- */}
 
-        {/* Textarea Container */}
-        <textarea
-          ref={textareaRef}
-          value={inputValue}
-          onChange={(e) => {
-            onInputChange(e);
-            requestAnimationFrame(adjustTextareaHeight);
-          }}
-          onKeyDown={handleKeyDown}
-          placeholder="Type a message..."
-          disabled={isProcessing}
-          rows={1}
-          className="chat-input-textarea" // Use class from CSS (padding handled by CSS)
-        />
-        {/* Removed the bottom bar with checkbox */}
+        {/* --- Input Row with Microphone Button --- */}
+        <div className="chat-input-main-row">
+          {/* Microphone Button - Placed on the left */}
+          <button
+            type="button"
+            onClick={handleMicClick}
+            disabled={isProcessing && !isRecording} // Allow stopping recording even if processing text
+            className={`mic-button ${isRecording ? 'recording' : ''}`}
+            title={isRecording ? 'Stop recording' : 'Start recording'}
+          >
+             🎙️ {/* Microphone Emoji - Replace with SVG if desired */} 
+          </button>
+
+          {/* Textarea */}
+          <textarea
+            ref={textareaRef}
+            value={inputValue}
+            onChange={(e) => {
+              onInputChange(e);
+              requestAnimationFrame(adjustTextareaHeight);
+            }}
+            onKeyDown={handleKeyDown}
+            placeholder={isRecording ? "Recording... Speak now!" : "Type or record message..."}
+            disabled={isProcessing || isRecording} // Disable text input while recording or processing
+            rows={1}
+            className="chat-input-textarea"
+          />
+        </div>
+        {/* --- End Input Row --- */}
 
         {/* --- NEW: Wrapper for bottom-right elements --- */}
         <div className="chat-input-bottom-right">
