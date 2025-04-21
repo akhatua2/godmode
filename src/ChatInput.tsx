@@ -6,8 +6,7 @@ interface ChatInputProps {
   inputValue: string;
   isProcessing: boolean;
   onInputChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
-  sessionCost: number; // Add sessionCost prop
-  // onSubmit?: () => void; // No longer needed as submit goes via IPC
+  sessionCost: number;
   contextTexts: string[];
   onRemoveContext: (index: number) => void;
 }
@@ -16,20 +15,18 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   inputValue, 
   isProcessing, 
   onInputChange, 
-  sessionCost, // Destructure the prop
+  sessionCost,
   contextTexts,
   onRemoveContext,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  // State for the screenshot toggle, default to false
   const [includeScreenshot, setIncludeScreenshot] = useState(false); 
 
   // --- Audio Recording State & Refs --- 
   const [isRecording, setIsRecording] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  // --- End Audio Recording State --- 
-
+  
   // --- State and Handler for Model Selection (MOVED FROM APP) --- 
   const modelMap = {
     "gpt-4o-mini": "4o-mini",
@@ -49,6 +46,81 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   };
   // --- End Model State and Handler --- 
 
+  const adjustTextareaHeight = () => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      textarea.style.height = 'auto';
+      const maxHeight = 200;
+      textarea.style.height = `${Math.min(textarea.scrollHeight, maxHeight)}px`;
+    }
+  };
+
+  useEffect(() => {
+    adjustTextareaHeight();
+  }, [inputValue]);
+
+  // --- Audio Recording Handlers (Moved Up & Revised Logic) --- 
+  const startRecording = useCallback(async () => {
+    // Prevent starting if already recording (check recorder state) or processing text input
+    if (mediaRecorderRef.current?.state === 'recording' || isProcessing) {
+      console.log(`[ChatInput] startRecording called but blocked: recorderState=${mediaRecorderRef.current?.state}, isProcessing=${isProcessing}`);
+      return;
+    }
+    try {
+      console.log('[ChatInput] Attempting to start recording...');
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const options = { mimeType: 'audio/webm;codecs=opus' }; // Specify MIME type
+      const mediaRecorder = new MediaRecorder(stream, options);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = []; // Clear previous chunks
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: options.mimeType });
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64String = reader.result as string;
+          // Remove the data URL prefix (e.g., "data:audio/webm;base64,")
+          const base64Data = base64String.split(',')[1]; 
+          console.log('[ChatInput] Sending audio data...');
+          window.electronAPI.sendAudioInput(base64Data, 'webm'); // Send base64 data
+        };
+        reader.readAsDataURL(audioBlob);
+        
+        // Clean up tracks
+        stream.getTracks().forEach(track => track.stop());
+        // --- Set isRecording false ONLY after processing --- 
+        // setIsRecording(false); // Reverted: State handled in stopRecording for click
+        console.log('[ChatInput] MediaRecorder stopped in onstop.'); // Updated log
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+      console.log('[ChatInput] Recording started');
+    } catch (err) {
+      console.error('[ChatInput] Error starting recording:', err);
+      // Optionally show an error to the user
+      setIsRecording(false); // Ensure state is reset on error
+    }
+  }, [isProcessing]);
+
+  const stopRecording = useCallback(() => {
+    // Check recorder state directly
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      console.log('[ChatInput] Explicitly stopping recording via stopRecording()...'); 
+      mediaRecorderRef.current.stop(); // Triggers onstop handler
+      setIsRecording(false); // Restore immediate state update for click
+    } else {
+      console.log(`[ChatInput] stopRecording called but no active recording found. State: ${mediaRecorderRef.current?.state}`);
+    }
+  }, []); 
+  // --- End Audio Recording Handlers ---
+
   // --- Listener for CMD+K Shortcut ---
   useEffect(() => {
     const handleGlobalSend = () => {
@@ -64,28 +136,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
       console.log('[ChatInput] Removing trigger-send-message listener');
       window.cleanup.removeTriggerSendMessageListener();
     };
-    // IMPORTANT: We pass handleSendMessage in the dependency array.
-    // If handleSendMessage relies on props/state (like inputValue, includeScreenshot, isProcessing),
-    // those should ALSO be in the dependency array or handleSendMessage should be memoized
-    // using useCallback in the component definition.
-    // For simplicity here, we assume handleSendMessage captures the latest state correctly
-    // when called, but this could cause stale closure issues if not careful.
-    // Let's add its dependencies to be safe.
   }, [inputValue, includeScreenshot, isProcessing]); // Add dependencies of handleSendMessage
   // --- End Listener for CMD+K Shortcut ---
-
-  const adjustTextareaHeight = () => {
-    const textarea = textareaRef.current;
-    if (textarea) {
-      textarea.style.height = 'auto';
-      const maxHeight = 200;
-      textarea.style.height = `${Math.min(textarea.scrollHeight, maxHeight)}px`;
-    }
-  };
-
-  useEffect(() => {
-    adjustTextareaHeight();
-  }, [inputValue]);
 
   const handleSendMessage = useCallback(() => {
     // Read context from props
@@ -119,54 +171,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     handleSendMessage();
   };
 
-  // --- Audio Recording Handlers --- 
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const options = { mimeType: 'audio/webm;codecs=opus' }; // Specify MIME type
-      const mediaRecorder = new MediaRecorder(stream, options);
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = []; // Clear previous chunks
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: options.mimeType });
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const base64String = reader.result as string;
-          // Remove the data URL prefix (e.g., "data:audio/webm;base64,")
-          const base64Data = base64String.split(',')[1]; 
-          console.log('[ChatInput] Sending audio data...');
-          window.electronAPI.sendAudioInput(base64Data, 'webm'); // Send base64 data
-        };
-        reader.readAsDataURL(audioBlob);
-        
-        // Clean up tracks
-        stream.getTracks().forEach(track => track.stop());
-      };
-
-      mediaRecorder.start();
-      setIsRecording(true);
-      console.log('[ChatInput] Recording started');
-    } catch (err) {
-      console.error('[ChatInput] Error starting recording:', err);
-      // Optionally show an error to the user
-    }
-  };
-
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      console.log('[ChatInput] Recording stopped');
-    }
-  };
-
   const handleMicClick = () => {
     if (isRecording) {
       stopRecording();
@@ -174,7 +178,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
       startRecording();
     }
   };
-  // --- End Audio Recording Handlers --- 
 
   return (
     <form onSubmit={handleSubmit} className="p-2 border-gray-200">
@@ -211,19 +214,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         </div>
         {/* --- End Wrapper --- */}
 
-        {/* --- Input Row with Microphone Button --- */}
+        {/* --- Input Row with Waveform Placeholder --- */}
         <div className="chat-input-main-row">
-          {/* Microphone Button - Placed on the left */}
-          <button
-            type="button"
-            onClick={handleMicClick}
-            disabled={isProcessing && !isRecording} // Allow stopping recording even if processing text
-            className={`mic-button ${isRecording ? 'recording' : ''}`}
-            title={isRecording ? 'Stop recording' : 'Start recording'}
-          >
-             🎙️ {/* Microphone Emoji - Replace with SVG if desired */} 
-          </button>
-
           {/* Textarea */}
           <textarea
             ref={textareaRef}
@@ -243,10 +235,31 @@ export const ChatInput: React.FC<ChatInputProps> = ({
 
         {/* --- NEW: Wrapper for bottom-right elements --- */}
         <div className="chat-input-bottom-right">
+          {/* Waveform Placeholder - Moved Here */}
+          <div
+            onClick={handleMicClick}
+            className={`waveform-placeholder ${isRecording ? 'recording' : ''}`}
+            title={isRecording ? 'Stop recording' : 'Start recording'}
+            role="button" // Indicate it's clickable
+            tabIndex={0} // Make it focusable
+            onKeyDown={(e) => { // Allow activation with Enter/Space
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handleMicClick();
+              }
+            }}
+          >
+            {/* Simple visual bars for the waveform */}
+            <span className="waveform-bar"></span>
+            <span className="waveform-bar"></span>
+            <span className="waveform-bar"></span>
+          </div>
+
           {/* Session Cost Display (moved inside wrapper) */}
           <div className="session-cost-display">
-            Cost: ${sessionCost.toFixed(6)} 
+            Cost: ${sessionCost.toFixed(6)}
           </div>
+
           {/* Model Selector (moved here) */}
           <select value={selectedModel} onChange={handleModelChange} className="model-selector-select">
             {(Object.keys(modelMap) as Array<keyof typeof modelMap>).map(model => (

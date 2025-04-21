@@ -232,12 +232,15 @@ background-color: rgba(0, 255, 0, 0.2); /* Example: translucent green */
 
 /* --- NEW: Bottom Right Wrapper --- */
 .chat-input-bottom-right {
-  position: absolute;
-  bottom: 4px;
-  right: 8px;
+  /* position: absolute; */ /* REMOVED Absolute positioning */
+  /* bottom: 4px; */
+  /* right: 8px; */
   display: flex;
   align-items: center;
-  gap: 6px; /* Spacing between cost and selector */
+  justify-content: flex-end; /* Align items to the right */
+  gap: 8px; /* Adjusted Spacing */
+  padding-top: 4px; /* Add some space above */
+  width: 100%; /* Take full width */
 }
 /* --- End Bottom Right Wrapper --- */
 
@@ -248,40 +251,66 @@ background-color: rgba(0, 255, 0, 0.2); /* Example: translucent green */
   gap: 8px; /* Space between mic and textarea */
 }
 
-/* --- Microphone Button Styles --- */
-.mic-button {
-  background: none;
-  border: none;
-  padding: 4px 8px; /* Adjust padding as needed */
+/* --- NEW: Waveform Placeholder Styles --- */
+.waveform-placeholder {
+  display: flex;
+  align-items: flex-end; /* Align bars to bottom */
+  justify-content: center; /* Horizontally center bars */
+  gap: 3px; /* Increased space between bars */
+  height: 1em; /* Reduced height */
+  /* width: 28px; */ /* REMOVED Fixed width */
+  padding: 0 0px; /* Reduced horizontal padding */
+  margin-bottom: 4px; /* Added bottom margin */
   cursor: pointer;
-  font-size: 1.2rem; /* Adjust icon size */
-  color: #6b7280; /* Tailwind gray-500 */
-  transition: color 0.2s ease;
-  align-self: center; /* Vertically center mic button in the row */
+  /* border-radius: 4px; */ /* REMOVED */
+  /* background-color: #f0f0f0; */ /* REMOVED */
+  /* border: 1px solid #ccc; */ /* REMOVED */
+  transition: none; /* REMOVED background transition */
+  flex-shrink: 0; /* Prevent shrinking */
 }
 
-.mic-button:hover:not(:disabled) {
-  color: #1f2937; /* Tailwind gray-800 */
+.waveform-placeholder:hover {
+  /* background-color: #e0e0e0; */ /* REMOVED hover effect */
 }
 
-.mic-button.recording {
-  color: #ef4444; /* Tailwind red-500 */
-  animation: pulse 1.5s infinite ease-in-out;
+.waveform-bar {
+  display: block;
+  width: 3px; /* Slightly wider bars */
+  height: 60%; /* Adjusted Start height */
+  background-color: #888; /* Dimmer default color */
+  transition: height 0.2s ease-in-out;
+  border-radius: 1px; /* Slight rounding */
 }
 
-.mic-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
+/* Style for the bars when recording */
+.waveform-placeholder.recording .waveform-bar {
+  background-color: #ef4444; /* Recording bar color (red-500) */
+  animation: waveform-pulse 1s infinite ease-in-out alternate;
 }
 
-@keyframes pulse {
-  0%, 100% {
-    transform: scale(1);
+/* Stagger the animation for each bar */
+.waveform-placeholder.recording .waveform-bar:nth-child(1) {
+  animation-delay: 0s;
+}
+.waveform-placeholder.recording .waveform-bar:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.waveform-placeholder.recording .waveform-bar:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes waveform-pulse {
+  0% {
+    height: 10%; /* Adjusted animation height */
   }
   50% {
-    transform: scale(1.15);
+    height: 100%; /* Adjusted animation height */
+  }
+  100% {
+    height: 10%; /* Adjusted animation height */
   }
 }
+/* --- End Waveform Styles --- */
 
 /* Adjust textarea within the row */
 .chat-input-main-row .chat-input-textarea {

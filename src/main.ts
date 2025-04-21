@@ -24,9 +24,10 @@ const backendUrl = 'ws://127.0.0.1:8000/ws';
 let isStreaming = false; // Flag to track if we are currently streaming a response
 
 // --- Store pending tool calls --- 
-// Simple map to hold tool calls waiting for user response
-// Key: toolCallId, Value: ToolCall object
 const pendingToolCalls = new Map<string, ToolCall>();
+
+// --- Define Fn key globally (Attempt) ---
+// const fnKey = 'Fn'; // REMOVED - Cannot be registered directly
 
 function connectWebSocket() {
   console.log('Attempting to connect to WebSocket:', backendUrl);
@@ -335,6 +336,14 @@ app.on('ready', () => {
   }
   // --- End Paste Global Shortcut ---
 
+  // --- Register Global Shortcut for Fn Key (Attempt) --- REMOVED ---
+  /* 
+  let isFnDown = false; 
+  const retFn = globalShortcut.register(fnKey, () => { ... });
+  if (!retFn) { ... } else { ... }
+  */
+  // --- End Fn Key Global Shortcut ---
+
   ipcMain.on('send-message', async (event, { text, includeScreenshot, contextText }: { text: string, includeScreenshot: boolean, contextText: string | null }) => {
     console.log(`[IPC] Received send-message: '${text}', Include Screenshot: ${includeScreenshot}, Context Provided: ${!!contextText}`);
     
@@ -559,6 +568,11 @@ app.on('will-quit', () => {
   globalShortcut.unregister(pasteShortcut);
   console.log(`[GlobalShortcut] ${pasteShortcut} unregistered.`);
   // --- End Unregister Paste Shortcut ---
+
+  // --- Unregister Fn Key Shortcut --- REMOVED ---
+  // globalShortcut.unregister(fnKey);
+  // console.log(`[GlobalShortcut] ${fnKey} unregistered (attempted).`);
+  // --- End Unregister Fn Key Shortcut --- 
 
   // Unregister all accelerators
   globalShortcut.unregisterAll(); // Keep this as a fallback
