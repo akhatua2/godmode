@@ -78,7 +78,7 @@ class ChatAgent:
         self.memory.append(message)
 
     # Refactored step method - handles one LLM call based on current memory
-    async def step(self, callbacks: Optional[List[Callable]] = None) -> AsyncGenerator[str | Dict[str, Any] | Tuple[str, float], None]:
+    async def step(self, api_keys: Optional[Dict[str, str]] = None, callbacks: Optional[List[Callable]] = None) -> AsyncGenerator[str | Dict[str, Any] | Tuple[str, float], None]:
         """Performs one step of interaction: gets LLM response and yields content/tool request."""
         print("[Agent] Executing agent step...")
         
@@ -89,6 +89,7 @@ class ChatAgent:
         response_stream = get_llm_response_stream(
             model_name=self.model_name,
             messages=self.memory,
+            api_keys=api_keys # Pass keys
         )
         # --- End LLM Client Call --- 
 

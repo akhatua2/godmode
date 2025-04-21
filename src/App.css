@@ -13,12 +13,58 @@
 
 /* Style the dedicated title bar */
 .title-bar {
-  height: 28px; /* Adjust height as needed for macOS title bar feel */
-  flex-shrink: 0; /* Prevent it from shrinking */
-  /* Remove temporary background */
-  /* background-color: rgba(255, 255, 255, 0.1); */
-  /* This is the ONLY draggable area now */
-   -webkit-app-region: drag; 
+  height: 28px; /* Or your desired height */
+  flex-shrink: 0;
+  -webkit-app-region: drag; /* Make the whole bar draggable by default */
+  /* Add positioning context for the controls */
+  position: relative;
+  /* Optional: Add a subtle background/border for visual debugging */
+  /* background-color: rgba(255, 0, 0, 0.1); */
+  /* border-bottom: 1px solid rgba(255, 255, 255, 0.1); */
+}
+
+/* NEW: Styles for the container holding buttons within the title bar */
+.title-bar-controls {
+  position: absolute; /* Position relative to the title-bar */
+  top: 0; /* Add some padding around buttons */
+  right: 0; /* Add some padding around buttons */
+  height: 100%; /* Match title bar height */
+  padding: 0 8px; /* Add some padding around buttons */
+  display: flex; /* Use flex to align the buttons */
+  align-items: center; /* Vertically center buttons */
+  gap: 8px; /* Space between buttons if you add more */
+  -webkit-app-region: no-drag; /* IMPORTANT: Make this area NOT draggable */
+}
+
+/* Specific styles for the settings button */
+.settings-toggle-button {
+  /* background: rgba(255, 255, 255, 0.1); /* Subtle background */
+  background: transparent; /* Remove background */
+  color: #ccc; /* Icon color */
+  /* border: 1px solid rgba(255, 255, 255, 0.2); /* Border color for the button */
+  border: none; /* Remove border */
+  border-radius: 4px; /* Slightly smaller radius */
+  /* padding: 2px; /* Reduce padding */
+  padding: 8px 2px 2px 2px; /* Add top padding (top, right, bottom, left) */
+  width: 20px; /* Reduce width */
+  height: 20px; /* Reduce height */
+  display: flex; /* Enable flexbox */
+  align-items: center; /* Center icon vertically */
+  justify-content: center; /* Center icon horizontally */
+  cursor: pointer; /* Cursor style when hovering over the button */
+  -webkit-app-region: no-drag; /* Explicitly make button not draggable */
+  transition: background-color 0.2s ease; /* Smooth transition on hover */
+}
+
+.settings-toggle-button svg {
+  width: 1em; /* Make SVG size relative to button font size (if set) or use fixed */
+  height: 1em;
+  display: block; /* Prevent extra space */
+}
+
+.settings-toggle-button:hover {
+  background-color: rgba(255, 255, 255, 0.2); /* Background color on hover */
+  border-color: rgba(255, 255, 255, 0.3); /* Border color on hover */
 }
 
 .messages-area {
@@ -29,8 +75,7 @@
   flex-direction: column;
   gap: 8px; /* Slightly reduce gap */
   background-color: transparent; /* Ensure transparent background */
-  /* This area should NOT be draggable */
-  -webkit-app-region: no-drag;
+  -webkit-app-region: no-drag; /* Ensure messages area isn't draggable */
 }
 
 /* New message item base styles */
@@ -268,8 +313,8 @@
   align-self: flex-start; 
   max-width: 90%; 
   /* Remove overrides if base message-tool-request styles are removed/changed */
-  /* padding: 12px !important; */ 
-  /* border: 1px solid #404652 !important; */
+  /* padding: 12px !important; 
+  border: 1px solid #404652 !important; */
 }
 
 .tool-terminal-content {

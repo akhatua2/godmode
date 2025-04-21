@@ -172,7 +172,19 @@ const electronAPI = {
       transcriptionResultListener = callback;
       ipcRenderer.on('transcription-result-from-main', transcriptionResultListener);
   },
+
+  // --- API Keys --- 
+  sendApiKeys: (keys: { [provider: string]: string }) => ipcRenderer.send('send-api-keys', keys),
+  // --- Backend Status Listener ---
+  onBackendStatusMessage: (callback: (event: IpcRendererEvent, data: { statusType: 'error' | 'warning' | 'info', text: string }) => void) => {
+    if (backendStatusListener) ipcRenderer.removeListener('backend-status-message', backendStatusListener);
+    backendStatusListener = callback;
+    ipcRenderer.on('backend-status-message', backendStatusListener);
+  },
 };
+
+// --- Add variable for the listener function ---
+let backendStatusListener: ((event: IpcRendererEvent, data: { statusType: string; text: string; }) => void) | null = null;
 
 // --- cleanup API Definition ---
 const cleanupAPI = {
@@ -275,6 +287,14 @@ const cleanupAPI = {
             ipcRenderer.removeListener('transcription-result-from-main', transcriptionResultListener);
             transcriptionResultListener = null;
         }
+    },
+
+    // --- API Keys Cleanup --- 
+    removeSendApiKeysListener: () => ipcRenderer.removeAllListeners('send-api-keys-response-or-error'),
+    // --- Backend Status Cleanup ---
+    removeBackendStatusMessageListener: () => {
+        if (backendStatusListener) ipcRenderer.removeListener('backend-status-message', backendStatusListener);
+        backendStatusListener = null;
     },
 };
 

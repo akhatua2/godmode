@@ -17,7 +17,8 @@ from tools import SERVER_EXECUTABLE_TOOLS, execute_browser_task
 async def run_agent_step_and_send(
     agent: ChatAgent, 
     websocket: WebSocket, 
-    pending_questions_dict: Dict[str, Dict[str, asyncio.Future]] # Added argument
+    pending_questions_dict: Dict[str, Dict[str, asyncio.Future]], # Added argument
+    api_keys: Optional[Dict[str, str]] = None # ADDED: Accept API keys
 ) -> Tuple[bool, Optional[float]]:
     """Runs one step of the agent and sends chunks/tool requests over WebSocket.
     Returns a tuple: (agent_finished_turn: bool, cost: Optional[float])
@@ -27,7 +28,7 @@ async def run_agent_step_and_send(
     final_cost_from_agent = None # Initialize cost variable
     try:
         # Directly iterate and capture cost within this function
-        async for result in agent.step():
+        async for result in agent.step(api_keys=api_keys):
             # --- Check for final_cost tuple --- 
             if isinstance(result, tuple) and result[0] == "final_cost":
                  final_cost_from_agent = result[1]
@@ -85,7 +86,9 @@ async def run_agent_step_and_send(
                             # Trigger the next agent step immediately
                             print("[WebSocket] Triggering agent step after server tool execution...")
                             # Recursive call - ensure agent state is consistent
-                            agent_finished, cost_from_nested_step = await run_agent_step_and_send(agent, websocket, pending_questions_dict)
+                            agent_finished, cost_from_nested_step = await run_agent_step_and_send(
+                                agent, websocket, pending_questions_dict, api_keys=api_keys # Pass keys in recursion
+                            )
                             # Combine costs if applicable (tricky with recursion, might double count)
                             # For simplicity, just return the cost from the *initial* step if available
                             return agent_finished, final_cost_from_agent if final_cost_from_agent is not None else cost_from_nested_step
@@ -93,14 +96,18 @@ async def run_agent_step_and_send(
                             print(f"[WebSocket Error] Failed to parse arguments for {first_tool_name}: {arguments}")
                             agent.add_message_to_memory(role="tool", tool_call_id=tool_call_id, content=f"Error: Invalid arguments provided for {first_tool_name}.")
                             # Recursive call after error
-                            agent_finished, cost_from_nested_step = await run_agent_step_and_send(agent, websocket, pending_questions_dict)
+                            agent_finished, cost_from_nested_step = await run_agent_step_and_send(
+                                agent, websocket, pending_questions_dict, api_keys=api_keys # Pass keys in recursion
+                            )
                             return agent_finished, final_cost_from_agent if final_cost_from_agent is not None else cost_from_nested_step
                         except Exception as tool_exec_error:
                             print(f"[WebSocket Error] Error executing server tool {first_tool_name}: {tool_exec_error}")
                             traceback.print_exc()
                             agent.add_message_to_memory(role="tool", tool_call_id=tool_call_id, content=f"Error executing tool {first_tool_name}: {tool_exec_error}")
                             # Recursive call after error
-                            agent_finished, cost_from_nested_step = await run_agent_step_and_send(agent, websocket, pending_questions_dict)
+                            agent_finished, cost_from_nested_step = await run_agent_step_and_send(
+                                agent, websocket, pending_questions_dict, api_keys=api_keys # Pass keys in recursion
+                            )
                             return agent_finished, final_cost_from_agent if final_cost_from_agent is not None else cost_from_nested_step
                     # --- End Server-Side Tool Check --- 
                     

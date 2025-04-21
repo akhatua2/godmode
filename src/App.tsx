@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import './App.css'; // We'll create this CSS file next
 import { ChatInput } from './ChatInput'; // Import the new component
 import { ChatMessage } from './ChatMessage'; // Import the new message component
+import { Settings } from './Settings'; // ADDED: Import Settings component
 
 // Import the type definition for cleaner code
 import type { Message, ChatMessageProps, ToolCall, AgentStepUpdateData, CostUpdatePayload } from './types';
@@ -11,6 +12,9 @@ interface PendingQuestion {
   question: string;
   requestId: string;
 }
+
+// --- Define providers you want inputs for ---
+// const API_KEY_PROVIDERS = ['openai', 'anthropic', 'groq']; // REMOVED from here
 
 function App() {
   // Update state to hold an array of Message objects
@@ -39,6 +43,23 @@ function App() {
   const [selectedTextContexts, setSelectedTextContexts] = useState<string[]>([]);
   // --- End Context State ---
 
+  // --- State for API Key Inputs --- // REMOVED
+  // const [apiKeysInput, setApiKeysInput] = useState<{ [provider: string]: string }>(() => { // REMOVED
+  //   // Initialize state with empty strings for each provider // REMOVED
+  //   const initialKeys: { [provider: string]: string } = {}; // REMOVED
+  //   API_KEY_PROVIDERS.forEach(provider => { // REMOVED
+  //     initialKeys[provider] = ''; // REMOVED
+  //   }); // REMOVED
+  //   return initialKeys; // REMOVED
+  // }); // REMOVED
+  // const [showApiKeyInputs, setShowApiKeyInputs] = useState(false); // REMOVED State to toggle visibility
+  // --- End API Key State --- // REMOVED
+
+  // --- State for Settings Dialog --- // ADDED
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false); // ADDED
+  const [activeApiKeys, setActiveApiKeys] = useState<{ [provider: string]: string }>({}); // ADDED Store active keys
+  // --- End Settings State --- // ADDED
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }
@@ -59,6 +80,43 @@ function App() {
     window.electronAPI.sendToolResponse(toolCallId, decision, result);
   };
 
+  // --- Handler for API Key Input Change --- // REMOVED
+  // const handleApiKeyInputChange = (provider: string, value: string) => { // REMOVED
+  //   setApiKeysInput(prev => ({ ...prev, [provider]: value })); // REMOVED
+  // }; // REMOVED
+  // --- End API Key Input Change Handler --- // REMOVED
+
+  // --- Handler for Saving API Keys --- // REMOVED
+  // const handleSaveApiKeys = useCallback(() => { // REMOVED
+  //   console.log('[App] Saving API Keys:', apiKeysInput); // REMOVED
+  //   // Filter out empty keys before sending // REMOVED
+  //   const keysToSend: { [provider: string]: string } = {}; // REMOVED
+  //   for (const provider in apiKeysInput) { // REMOVED
+  //     if (apiKeysInput[provider].trim() !== '') { // REMOVED
+  //       keysToSend[provider] = apiKeysInput[provider].trim(); // REMOVED
+  //     } // REMOVED
+  //   } // REMOVED
+  //   if (Object.keys(keysToSend).length > 0) { // REMOVED
+  //     window.electronAPI.sendApiKeys(keysToSend); // REMOVED
+  //     // Optional: Add visual feedback or clear inputs after saving // REMOVED
+  //     console.log('[App] Sent API keys to main process.'); // REMOVED
+  //     setShowApiKeyInputs(false); // Hide inputs after saving // REMOVED
+  //   } else { // REMOVED
+  //     console.log('[App] No API keys entered to save.'); // REMOVED
+  //     setShowApiKeyInputs(false); // Still hide if nothing was entered // REMOVED
+  //   } // REMOVED
+  // }, [apiKeysInput]); // REMOVED
+  // --- End Save API Keys Handler --- // REMOVED
+
+  // --- Handler for saving keys from Settings component --- // ADDED
+  const handleSaveKeysFromSettings = useCallback((keysFromSettings: { [provider: string]: string }) => { // ADDED
+    console.log('[App] Saving keys received from Settings:', keysFromSettings); // ADDED
+    setActiveApiKeys(keysFromSettings); // Update active keys state // ADDED
+    window.electronAPI.sendApiKeys(keysFromSettings); // Send to main process // ADDED
+    setIsSettingsOpen(false); // Close the dialog // ADDED
+  }, []); // ADDED No dependencies needed here
+  // --- End Save Keys from Settings Handler --- // ADDED
+
   // Effect to listen for messages and stream events from the main process
   useEffect(() => {
     // Handles complete messages (user message, image, errors, connection status)
@@ -72,11 +130,6 @@ function App() {
         // Clear the array
         setSelectedTextContexts([]); // Clear context array after sending
         setIsProcessing(true); // Start processing (screenshot + LLM)
-      }
-      // If it's an error message or connection message, stop processing.
-      if (!message.isUser && (message.text.startsWith('[Error') || message.text.startsWith('[Backend Error') || message.text.startsWith('[WebSocket Error') || message.text.startsWith('[Connection lost'))) {
-          setIsProcessing(false);
-          setIsBotStreaming(false); // Ensure streaming stops on error
       }
       // Screenshot messages don't stop processing, as LLM call follows
     };
@@ -214,6 +267,20 @@ function App() {
     };
     // --- End Transcription Listener ---
 
+    // --- Listener for Backend Status (Errors/Warnings/Info) --- // ADDED
+    const handleBackendStatus = (event: Electron.IpcRendererEvent, { statusType, text }: { statusType: 'error' | 'warning' | 'info', text: string }) => { // ADDED
+        console.log(`App: Backend status [${statusType}]: ${text}`); // ADDED
+        // Add message to UI
+        setMessages(prev => [...prev, { text: text, isUser: false }]); // ADDED Treat as a bot message for display
+        // Stop processing indicators if it's an error or warning
+        if (statusType === 'error' || statusType === 'warning') { // ADDED
+            setIsProcessing(false); // ADDED
+            setIsBotStreaming(false); // ADDED
+        }
+        // Optional: Handle 'info' differently if needed
+    }; // ADDED
+    // --- End Backend Status Listener --- // ADDED
+
     // Set up the listeners using the exposed API
     // Feature removed: CommandOrControl+I paste
     // const handleGlobalPaste = (event: Electron.IpcRendererEvent, content: string) => {
@@ -243,6 +310,9 @@ function App() {
     // Add the new listener
     window.electronAPI.onTranscriptionResult(handleTranscriptionResult); // Register new listener
 
+    // Add the new listener
+    window.electronAPI.onBackendStatusMessage(handleBackendStatus); // ADDED: Register the new listener
+
     // Cleanup function to remove the listeners when the component unmounts
     return () => {
       // Assume these cleanup functions will be exposed via preload
@@ -267,6 +337,9 @@ function App() {
 
       // Add cleanup for the new listener
       window.cleanup?.removeTranscriptionResultListener(); // Add cleanup for new listener
+
+      // Add cleanup for the new listener
+      window.cleanup?.removeBackendStatusMessageListener(); // ADDED: Cleanup the new listener
     };
   }, []); // Empty dependency array means this runs once on mount
 
@@ -301,8 +374,30 @@ function App() {
 
   return (
     <div className="app-container">
-      {/* Empty div for dragging */}
-      <div className="title-bar"></div>
+      {/* Title bar - ONLY this outer div is draggable */}
+      <div className="title-bar">
+        {/* Container for buttons/controls - NOT draggable */}
+        <div className="title-bar-controls">
+          <button
+            onClick={() => setIsSettingsOpen(true)}
+            className="settings-toggle-button"
+            title="Settings"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {/* Settings Component (Dialog/Overlay) */}
+      <Settings
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        initialKeys={activeApiKeys}
+        onSaveKeys={handleSaveKeysFromSettings}
+      />
 
       <div className="messages-area">
         {messages.map((msg, index) => {
@@ -364,7 +459,6 @@ function App() {
               value={agentAnswerInput}
               onChange={(e) => setAgentAnswerInput(e.target.value)}
               placeholder={`Reply to agent...`}
-              className="agent-question-input"
               autoFocus // Focus on the input when it appears
             />
             <button type="submit" className="agent-question-submit-button">Send</button>
@@ -376,4 +470,4 @@ function App() {
   );
 }
 
-export default App; 
+export default App;

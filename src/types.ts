@@ -90,6 +90,10 @@ export interface IElectronAPI {
   // --- Audio/Transcription --- 
   sendAudioInput: (audioData: string, format: string) => void;
   onTranscriptionResult: (callback: (event: IpcRendererEvent, text: string) => void) => void;
+  // --- API Keys ---
+  sendApiKeys: (keys: { [provider: string]: string }) => void;
+  // --- Backend Status Messages ---
+  onBackendStatusMessage: (callback: (event: IpcRendererEvent, data: { statusType: 'error' | 'warning' | 'info', text: string }) => void) => void;
 }
 
 // Interface for the cleanup functions exposed by the preload script
@@ -117,6 +121,10 @@ export interface ICleanupAPI {
     removeSetSelectedTextContextListener: () => void;
     // --- Audio/Transcription Cleanup ---
     removeTranscriptionResultListener: () => void;
+    // --- API Keys Cleanup ---
+    removeSendApiKeysListener?: () => void;
+    // --- Backend Status Cleanup ---
+    removeBackendStatusMessageListener?: () => void;
 }
 
 // Extend the Window interface to include our exposed APIs

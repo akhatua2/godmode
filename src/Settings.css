@@ -1,0 +1,109 @@
+.settings-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.6); /* Semi-transparent black */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000; /* Ensure it's on top */
+  }
+  
+  .settings-dialog {
+    /* background-color: #2b2b2b; /* Original Dark background */
+    background-color: rgba(30, 30, 30, 0.75); /* Darker, semi-transparent background */
+    backdrop-filter: blur(10px); /* Add glass effect */
+    -webkit-backdrop-filter: blur(10px); /* For Safari compatibility */
+    border: 1px solid rgba(255, 255, 255, 0.1); /* Subtle border for glass effect */
+    color: #cccccc; /* Adjusted text color */
+    padding: 15px; /* Further reduced padding */
+    border-radius: 8px; /* Slightly larger radius for glass */
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+    min-width: 240px; /* Further reduced min-width */
+    max-width: 450px; /* Further reduced max-width */
+    width: 70%; /* Further reduced width */
+    z-index: 1001;
+  }
+  
+  .settings-dialog h2 {
+    margin-top: 0;
+    margin-bottom: 10px; /* Slightly more space for title */
+    color: #ffffff;
+    text-align: center;
+    font-size: 1.0em; /* Reduced font size */
+  }
+  
+  .settings-dialog p {
+    margin-bottom: 15px;
+    font-size: 0.75em; /* Reduced font size */
+    color: #aaaaaa; /* Dimmer text */
+    text-align: center;
+  }
+  
+  .settings-input-group {
+    margin-bottom: 10px; /* Reduced margin */
+  }
+  
+  .settings-input-group label {
+    display: block;
+    margin-bottom: 4px;
+    font-weight: bold;
+    font-size: 0.6em; /* Adjusted font size */
+    color: #b0b0b0;
+  }
+  
+  .settings-input-group input {
+    width: calc(100% - 16px); /* Account for padding */
+    padding: 5px 8px; /* Reduced padding */
+    border-radius: 4px;
+    border: 1px solid #555;
+    background-color: #3c3c3c; /* Keep similar dark input */
+    color: #e0e0e0;
+    font-size: 0.75em; /* Reduced font size */
+    outline: none; /* Explicitly remove outline */
+    transition: border-color 0.2s ease; /* Match ChatInput transition */
+  }
+
+  .settings-input-group input:focus {
+    outline: none;
+    border-color: #61afef; /* Match ChatInput focus color */
+    /* Remove box-shadow for consistency */
+  }
+  
+  .settings-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 15px; /* Reduced margin */
+  }
+  
+  .settings-buttons button {
+    padding: 5px 10px; /* Reduced padding */
+    border-radius: 4px; /* Match input radius */
+    border: none;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 0.75em; /* Reduced font size */
+    transition: background-color 0.2s ease;
+  }
+  
+  .settings-save-button {
+    background-color: #5a9e5a; /* Match agent OK button green */
+    color: white;
+  }
+
+  .settings-save-button:hover {
+    background-color: #6aaf6a; /* Lighter green on hover */
+  }
+  
+  .settings-close-button {
+    background-color: #555;
+    color: #cccccc; /* Adjusted text color */
+  }
+
+  .settings-close-button:hover {
+    background-color: #6b6b6b;
+  }
+  

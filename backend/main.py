@@ -63,13 +63,6 @@ async def websocket_endpoint(websocket: WebSocket):
     print(f"WebSocket attempting connection for chat_id: {chat_id}")
     # --- End get/validate chat_id --- 
 
-    # Check for necessary API keys (moved up for earlier exit)
-    if not os.getenv("OPENAI_API_KEY"): # Or other required keys based on your agent
-        print(f"WebSocket closing ({chat_id}): Backend LLM provider key not configured.")
-        await websocket.send_text(json.dumps({"type": "error", "content": "Backend LLM provider key not configured."}))
-        await websocket.close(code=1008)
-        return
-
     agent: ChatAgent
     session_total_cost: float
     connection_key = str(websocket.client) # Unique identifier for this specific connection
@@ -125,7 +118,8 @@ async def websocket_endpoint(websocket: WebSocket):
         ACTIVE_CONNECTIONS[connection_key] = {
             "chat_id": chat_id,
             "agent": agent,
-            "total_cost": session_total_cost
+            "total_cost": session_total_cost,
+            "api_keys": {} # ADDED: Initialize empty dict for session API keys
         }
         print(f"WebSocket connection {connection_key} established for chat_id: {chat_id}")
         
@@ -193,8 +187,9 @@ async def websocket_endpoint(websocket: WebSocket):
                         await save_message_to_db(chat_id=chat_id, role="user", content=user_content)
                     
                     # --- Run the agent step (using retrieved agent) --- 
+                    api_keys_for_step = connection_state.get("api_keys", {}) # Get session keys
                     agent_finished_turn, step_cost = await run_agent_step_and_send(
-                        agent, websocket, PENDING_AGENT_QUESTIONS # Pass dict
+                        agent, websocket, PENDING_AGENT_QUESTIONS, api_keys=api_keys_for_step # Pass keys
                     )
                     if step_cost is not None:
                         connection_state["total_cost"] += step_cost
@@ -233,8 +228,9 @@ async def websocket_endpoint(websocket: WebSocket):
                     
                     # --- Run agent step again (using retrieved agent) --- 
                     print(f"[WebSocket ({chat_id})] Triggering agent step after receiving tool results...")
+                    api_keys_for_step = connection_state.get("api_keys", {}) # Get session keys
                     agent_finished_turn, step_cost = await run_agent_step_and_send(
-                        agent, websocket, PENDING_AGENT_QUESTIONS # Pass dict
+                        agent, websocket, PENDING_AGENT_QUESTIONS, api_keys=api_keys_for_step # Pass keys
                     )
                     if step_cost is not None:
                         connection_state["total_cost"] += step_cost
@@ -285,6 +281,22 @@ async def websocket_endpoint(websocket: WebSocket):
                     else:
                         print(f"[WebSocket ({chat_id}) WARNING] Received invalid set_llm_model message: {message_data}")
                         await websocket.send_text(json.dumps({"type": "error", "content": "Invalid or missing model_name in set_llm_model message"}))
+                
+                # --- NEW: Handle set_api_keys --- 
+                elif message_type == "set_api_keys":
+                    keys_data = message_data.get("keys")
+                    if isinstance(keys_data, dict):
+                        print(f"[WebSocket ({chat_id})] Received request to set API keys.")
+                        # Validate keys (basic validation)
+                        validated_keys = {k: v for k, v in keys_data.items() if isinstance(k, str) and isinstance(v, str)}
+                        connection_state["api_keys"] = validated_keys # Update the connection state
+                        print(f"[WebSocket ({chat_id})] Updated API keys for session: {list(validated_keys.keys())}")
+                        # Optional: Send confirmation back to client
+                        await websocket.send_text(json.dumps({"type": "info", "content": f"API keys received for providers: {list(validated_keys.keys())}"}))
+                    else:
+                         print(f"[WebSocket ({chat_id}) WARNING] Received invalid set_api_keys message: {message_data}")
+                         await websocket.send_text(json.dumps({"type": "error", "content": "Invalid or missing 'keys' dictionary in set_api_keys message"}))
+                # --- End set_api_keys handling ---
                 
                 elif message_type == "audio_input":
                     # ... (logic for getting audio data, format remains same) ...

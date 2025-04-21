@@ -20,8 +20,8 @@
   outline: none;
   resize: none;
   min-height: 24px; /* Further Reduced min-height */
-  font-size: 0.8rem; /* Smaller font size */
-  line-height: 1.4; /* Adjust line-height for smaller font */
+  font-size: 0.7rem; /* Smaller font size */
+  line-height: 1; /* Adjust line-height for smaller font */
   box-shadow: none;
 }
 

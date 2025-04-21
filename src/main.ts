@@ -353,6 +353,34 @@ app.on('ready', () => {
   */
   // --- End Fn Key Global Shortcut ---
 
+  // --- IPC Listener for API Keys --- // ADDED
+  ipcMain.on('send-api-keys', (event, keys: { [provider: string]: string }) => { // ADDED
+    console.log(`[IPC] Received send-api-keys request:`, Object.keys(keys)); // ADDED Log providers, not keys themselves
+    if (ws && ws.readyState === WebSocket.OPEN) { // ADDED
+      try { // ADDED
+        ws.send(JSON.stringify({ // ADDED
+          type: 'set_api_keys', // ADDED
+          keys: keys // Send the dictionary of keys // ADDED
+        })); // ADDED
+        console.log("[WebSocket Send] Sent set_api_keys to backend."); // ADDED
+        // Optional: Send confirmation back to renderer? // ADDED
+        // event.sender.send('send-api-keys-response-or-error', { success: true }); // ADDED
+      } catch (error) { // ADDED
+         console.error('[WebSocket Send] Error sending set_api_keys:', error); // ADDED
+         // Optional: Send error back to renderer? // ADDED
+         // event.sender.send('send-api-keys-response-or-error', { success: false, error: error.message }); // ADDED
+         // Also notify via existing channel // ADDED
+         mainWindow?.webContents.send('backend-status-message', { statusType: 'error', text: 'Failed to send API keys to backend.' }); // ADDED
+      } // ADDED
+    } else { // ADDED
+      console.error("[WebSocket Send] Cannot send set_api_keys, WebSocket not connected."); // ADDED
+      // Optional: Send error back to renderer? // ADDED
+      // event.sender.send('send-api-keys-response-or-error', { success: false, error: 'WebSocket not connected' }); // ADDED
+      mainWindow?.webContents.send('backend-status-message', { statusType: 'error', text: 'Cannot send API keys, connection lost.' }); // ADDED
+    } // ADDED
+  }); // ADDED
+  // --- End API Keys Listener --- // ADDED
+
   ipcMain.on('send-message', async (event, { text, includeScreenshot, contextText }: { text: string, includeScreenshot: boolean, contextText: string | null }) => {
     console.log(`[IPC] Received send-message: '${text}', Include Screenshot: ${includeScreenshot}, Context Provided: ${!!contextText}`);
     

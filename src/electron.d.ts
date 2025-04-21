@@ -23,6 +23,8 @@ export interface IElectronAPI {
   onCostUpdate: (callback: (event: IpcRendererEvent, payload: CostUpdatePayload) => void) => void;
   sendAudioInput: (audioData: string, format: string) => void;
   onTranscriptionResult: (callback: (event: IpcRendererEvent, text: string) => void) => void;
+  sendApiKeys: (keys: { [provider: string]: string }) => void;
+  onBackendStatusMessage: (callback: (event: IpcRendererEvent, data: { statusType: 'error' | 'warning' | 'info', text: string }) => void) => void;
 }
 
 export interface ICleanupAPI {
@@ -39,6 +41,8 @@ export interface ICleanupAPI {
   removeAgentStepUpdateListener: () => void;
   removeCostUpdateListener: () => void;
   removeTranscriptionResultListener: () => void;
+  removeSendApiKeysListener?: () => void;
+  removeBackendStatusMessageListener?: () => void;
 }
 
 declare global {
