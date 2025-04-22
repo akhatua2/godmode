@@ -244,6 +244,14 @@ const createWindow = () => {
     },
   });
 
+  // --- Make window visible on all workspaces --- // ADDED
+  mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true }); // Added options for macOS consistency
+  console.log('[Main] Set window to be visible on all workspaces.');
+  // --- END ADDED --- 
+
+  // --- Focus window when it's shown --- 
+  // mainWindow.on('show', () => { ... }); // Keeping previous focus logic (show/focus in shortcut)
+
   mainWindow.setBackgroundColor('#00000000');
 
   // and load the index.html of the app.
@@ -261,7 +269,7 @@ const createWindow = () => {
     if (ws) {
       ws.close();
     }
-    pendingToolCalls.clear(); // Clear on close
+    pendingToolCalls.clear();
   });
 };
 
@@ -345,13 +353,31 @@ app.on('ready', () => {
   }
   // --- End Paste Global Shortcut ---
 
-  // --- Register Global Shortcut for Fn Key (Attempt) --- REMOVED ---
-  /* 
-  let isFnDown = false; 
-  const retFn = globalShortcut.register(fnKey, () => { ... });
-  if (!retFn) { ... } else { ... }
-  */
-  // --- End Fn Key Global Shortcut ---
+  // --- Register Global Shortcut for Toggling Window Visibility ---
+  const toggleShortcut = 'CommandOrControl+B';
+  const retToggle = globalShortcut.register(toggleShortcut, () => {
+      console.log(`[GlobalShortcut] ${toggleShortcut} pressed.`);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+          if (mainWindow.isVisible() && mainWindow.isFocused()) { 
+              console.log('[GlobalShortcut] Hiding window.');
+              mainWindow.hide();
+          } else {
+              // If hidden or not focused, show AND focus.
+              console.log('[GlobalShortcut] Showing and focusing window.');
+              mainWindow.show(); 
+              mainWindow.focus(); // Put focus call back here
+          }
+      } else {
+          console.warn(`[GlobalShortcut] ${toggleShortcut} pressed, but mainWindow is not available.`);
+      }
+  });
+
+  if (!retToggle) {
+      console.error(`[GlobalShortcut] Registration failed for ${toggleShortcut}`);
+  } else {
+      console.log(`[GlobalShortcut] ${toggleShortcut} registered successfully`);
+  }
+  // --- End Toggle Window Visibility Global Shortcut ---
 
   // --- IPC Listener for API Keys --- // ADDED
   ipcMain.on('send-api-keys', (event, keys: { [provider: string]: string }) => { // ADDED
@@ -605,6 +631,12 @@ app.on('will-quit', () => {
   globalShortcut.unregister(pasteShortcut);
   console.log(`[GlobalShortcut] ${pasteShortcut} unregistered.`);
   // --- End Unregister Paste Shortcut ---
+
+  // --- Unregister Toggle Shortcut ---
+  const toggleShortcut = 'CommandOrControl+B';
+  globalShortcut.unregister(toggleShortcut);
+  console.log(`[GlobalShortcut] ${toggleShortcut} unregistered.`);
+  // --- End Unregister Toggle Shortcut ---
 
   // --- Unregister Fn Key Shortcut --- REMOVED ---
   // globalShortcut.unregister(fnKey);

@@ -268,17 +268,16 @@ function App() {
     // --- End Transcription Listener ---
 
     // --- Listener for Backend Status (Errors/Warnings/Info) --- // ADDED
-    const handleBackendStatus = (event: Electron.IpcRendererEvent, { statusType, text }: { statusType: 'error' | 'warning' | 'info', text: string }) => { // ADDED
-        console.log(`App: Backend status [${statusType}]: ${text}`); // ADDED
+    const handleBackendStatus = (event: Electron.IpcRendererEvent, { statusType, text }: { statusType: 'error' | 'warning' | 'info', text: string }) => {
+        console.log(`App: Backend status [${statusType}]: ${text}`);
         // Add message to UI
-        setMessages(prev => [...prev, { text: text, isUser: false }]); // ADDED Treat as a bot message for display
+        setMessages(prev => [...prev, { text: text, isUser: false }]);
         // Stop processing indicators if it's an error or warning
-        if (statusType === 'error' || statusType === 'warning') { // ADDED
-            setIsProcessing(false); // ADDED
-            setIsBotStreaming(false); // ADDED
+        if (statusType === 'error' || statusType === 'warning') {
+            setIsProcessing(false);
+            setIsBotStreaming(false);
         }
-        // Optional: Handle 'info' differently if needed
-    }; // ADDED
+    };
     // --- End Backend Status Listener --- // ADDED
 
     // Set up the listeners using the exposed API
@@ -440,32 +439,33 @@ function App() {
         )}
       {/* --- End Typing Indicator --- */}
 
-      <ChatInput 
-        inputValue={inputValue}
-        onInputChange={handleInputChange}
-        // Disable main input if processing OR if waiting for user response to agent
-        isProcessing={isProcessing || isBotStreaming || !!pendingQuestion} 
-        sessionCost={currentSessionCost}
-        // Pass context array and remove function down
-        contextTexts={selectedTextContexts}
-        onRemoveContext={handleRemoveContext}
-      />
-      {/* --- Conditional Input for Agent Question --- */}
-      {pendingQuestion && (
-        <div className="agent-question-input-area">
-          <form onSubmit={handleAgentAnswerSubmit} className="agent-question-form">
-            <input 
-              type="text"
-              value={agentAnswerInput}
-              onChange={(e) => setAgentAnswerInput(e.target.value)}
-              placeholder={`Reply to agent...`}
-              autoFocus // Focus on the input when it appears
-            />
-            <button type="submit" className="agent-question-submit-button">Send</button>
-          </form>
-        </div>
-      )}
-      {/* --- End Conditional Input --- */}
+      {/* Conditionally render ChatInput and Agent Input based on state */} 
+      <>
+        <ChatInput 
+          inputValue={inputValue}
+          onInputChange={handleInputChange}
+          isProcessing={isProcessing || isBotStreaming || !!pendingQuestion} 
+          sessionCost={currentSessionCost}
+          contextTexts={selectedTextContexts}
+          onRemoveContext={handleRemoveContext}
+        />
+        {/* Conditional Input for Agent Question */}
+        {pendingQuestion && (
+          <div className="agent-question-input-area">
+            <form onSubmit={handleAgentAnswerSubmit} className="agent-question-form">
+              <input 
+                type="text"
+                value={agentAnswerInput}
+                onChange={(e) => setAgentAnswerInput(e.target.value)}
+                placeholder={`Reply to agent...`}
+                autoFocus // Focus on the input when it appears
+              />
+              <button type="submit" className="agent-question-submit-button">Send</button>
+            </form>
+          </div>
+        )}
+      </>
+      {/* --- End Conditional Rendering --- */}
     </div>
   );
 }

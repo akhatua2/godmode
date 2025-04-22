@@ -204,22 +204,13 @@ background-color: rgba(0, 255, 0, 0.2); /* Example: translucent green */
 /* --- End Context Block Styles --- */
 
 /* --- Model Selector Styles --- */
-/* Remove old container style */
-/*
-.model-selector-container {
-  padding: 4px 15px; 
-  border-bottom: 1px solid rgba(180, 180, 180, 0.1); 
-  text-align: center; 
-}
-*/
 
 .model-selector-select {
   /* Remove visual styling */
   background-color: transparent; /* Make background see-through */
-  color: #cccccc; /* Keep text color */
+  color: #888; /* Keep text color */
   border: none; /* Remove border */
-  border-radius: 4px;
-  padding: 2px 5px;
+  padding: 0px 0px;
   font-size: 0.6rem; /* Smallish font */
   outline: none;
   cursor: pointer;
@@ -256,22 +247,26 @@ background-color: rgba(0, 255, 0, 0.2); /* Example: translucent green */
   display: flex;
   align-items: flex-end; /* Align bars to bottom */
   justify-content: center; /* Horizontally center bars */
-  gap: 3px; /* Increased space between bars */
-  height: 1em; /* Reduced height */
-  /* width: 28px; */ /* REMOVED Fixed width */
-  padding: 0 0px; /* Reduced horizontal padding */
-  margin-bottom: 4px; /* Added bottom margin */
   cursor: pointer;
-  /* border-radius: 4px; */ /* REMOVED */
-  /* background-color: #f0f0f0; */ /* REMOVED */
-  /* border: 1px solid #ccc; */ /* REMOVED */
   transition: none; /* REMOVED background transition */
   flex-shrink: 0; /* Prevent shrinking */
+  color: #757e85;
 }
 
-.waveform-placeholder:hover {
-  /* background-color: #e0e0e0; */ /* REMOVED hover effect */
-}
+
+.glimmering {
+    animation: glimmer 2s ease-in-out infinite;
+    color: #ff3b30;
+  }
+
+  @keyframes glimmer {
+    0% { opacity: 1; }
+    50% { opacity: 0.7; }
+    60% { opacity: 1; }
+    70% { opacity: 0.7; }
+    100% { opacity: 1; }
+  }
+
 
 .waveform-bar {
   display: block;
@@ -299,17 +294,6 @@ background-color: rgba(0, 255, 0, 0.2); /* Example: translucent green */
   animation-delay: 0.4s;
 }
 
-@keyframes waveform-pulse {
-  0% {
-    height: 10%; /* Adjusted animation height */
-  }
-  50% {
-    height: 100%; /* Adjusted animation height */
-  }
-  100% {
-    height: 10%; /* Adjusted animation height */
-  }
-}
 /* --- End Waveform Styles --- */
 
 /* Adjust textarea within the row */

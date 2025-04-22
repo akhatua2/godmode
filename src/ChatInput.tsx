@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import './ChatInput.css'; // Import the CSS
+import { PiWaveformBold } from "react-icons/pi";
 
 // Updated Props
 interface ChatInputProps {
@@ -250,9 +251,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             }}
           >
             {/* Simple visual bars for the waveform */}
-            <span className="waveform-bar"></span>
-            <span className="waveform-bar"></span>
-            <span className="waveform-bar"></span>
+            <PiWaveformBold className={isRecording ? 'glimmering' : ''} />
+
           </div>
 
           {/* Session Cost Display (moved inside wrapper) */}
