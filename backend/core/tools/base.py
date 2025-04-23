@@ -4,8 +4,15 @@ import os # For reading env vars
 import uuid # For unique IDs
 from dotenv import load_dotenv # For reading env vars
 from tavily import TavilyClient # Import Tavily client
-from langchain_openai import ChatOpenAI # Import OpenAI client
+from langchain_openai import ChatOpenAI  # Import directly from langchain_openai
 from browser_use import Agent, Browser, BrowserConfig, Controller, ActionResult
+from app.config import (
+    TAVILY_API_KEY,
+    OPENAI_API_KEY,
+    DEFAULT_MODEL,
+    PLANNER_MODEL,
+    CHROME_PATH
+)
 
 # --- Load Env Vars and Initialize Clients ---
 load_dotenv()

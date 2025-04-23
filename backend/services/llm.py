@@ -1,21 +1,21 @@
+import os
 import json
 import asyncio
-import litellm # Import LiteLLM
-from typing import List, Dict, Any, AsyncGenerator, Union, Optional, Callable, Tuple # Added Tuple
+import litellm
+from typing import List, Dict, Any, AsyncGenerator, Union, Optional, Callable, Tuple
+from openai.types.chat import ChatCompletionChunk
+from dotenv import load_dotenv
+from core.tools.base import TOOL_SCHEMAS
 
-# Import necessary OpenAI types
-# Remove OpenAI client import
-from openai.types.chat import ChatCompletionChunk # Keep for type hinting chunks if LiteLLM yields compatible objects
-
-# Import tool schemas to be used
-from tools import TOOL_SCHEMAS 
+# Load environment variables
+load_dotenv()
 
 async def get_llm_response_stream(
     model_name: str,
     messages: List[Dict[str, Any]],
     temperature: float = 0.7,
     max_tokens: Optional[int] = None,
-    api_keys: Optional[Dict[str, str]] = None # ADDED: Accept API keys
+    api_keys: Optional[Dict[str, str]] = None
 ) -> AsyncGenerator[ChatCompletionChunk | Dict[str, str] | Tuple[str, float], None]:
     """Gets a streaming response from LiteLLM, yielding chunks or error dicts."""
     stream_kwargs = {

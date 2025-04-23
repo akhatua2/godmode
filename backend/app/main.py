@@ -10,17 +10,17 @@ import aiosqlite # ADDED
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from dotenv import load_dotenv
-# Import only ChatAgent, ToolCallRequest is no longer needed
-from agent import ChatAgent 
+# Import from new locations
+from core.agent.agent import ChatAgent
+from db.operations import init_db, save_message_to_db, update_chat_metadata_in_db, DATABASE_URL
+from services.transcription import get_transcription
+from app.websocket.handler import run_agent_step_and_send
 from typing import List, Dict, Any, Callable, Tuple, Optional
 # --- Import Server Tool Registry --- 
 # --- End Import --- 
 # --- Import Database Functions ---
-from database import init_db, save_message_to_db, update_chat_metadata_in_db, DATABASE_URL
 # --- End DB Import ---
 # --- Import Logic Functions ---
-from transcription import get_transcription # ADDED
-from websocket_logic import run_agent_step_and_send # ADDED (Explicit import)
 # --- End Import Logic Functions ---
 
 # Load environment variables from .env file

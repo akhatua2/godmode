@@ -3,11 +3,10 @@ import json
 import traceback
 import asyncio
 from fastapi import WebSocket, HTTPException # Only WebSocket needed here from fastapi
-from agent import ChatAgent 
+from core.agent.agent import ChatAgent 
 from typing import List, Dict, Any, Callable, Tuple, Optional
 # --- Import Server Tool Registry --- 
-# Assume tools.py and its contents are accessible from here
-from tools import SERVER_EXECUTABLE_TOOLS, execute_browser_task 
+from core.tools.base import SERVER_EXECUTABLE_TOOLS, execute_browser_task 
 # --- Import state potentially needed by tools ---
 # This creates a potential circular dependency if tools also import this.
 # Consider passing necessary state (like PENDING_AGENT_QUESTIONS) as arguments instead.

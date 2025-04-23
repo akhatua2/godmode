@@ -1,16 +1,20 @@
 import json
+import uuid
 import asyncio
 from typing import Optional, List, Dict, Any, AsyncGenerator, Tuple, TypedDict, Callable
 # Import Stream type for better hinting if needed (optional)
 from openai.types.chat import ChatCompletionChunk
 # ChoiceDeltaToolCall is used for type hinting the chunk, not for accumulation state
 from openai.types.chat.chat_completion_chunk import ChoiceDelta 
+from pydantic import BaseModel
+from dotenv import load_dotenv
+import os
 
-# Import tool schemas (used by llm_client now)
-# from tools import TOOL_SCHEMAS 
-# --- Import the new LLM client function --- 
-from llm_client import get_llm_response_stream
-# --- End import --- 
+# Update import path for llm_client
+from services.llm import get_llm_response_stream
+
+# Load environment variables
+load_dotenv()
 
 # Define message structure directly here if not using external types
 # (Matching OpenAI API structure)
