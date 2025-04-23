@@ -8,6 +8,7 @@ lerna-debug.log*
 
 
 rnd/
+backend/data/*
 
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
@@ -109,3 +110,5 @@ env.bak/
 
 # FastAPI/Uvicorn potentially specific
 .uvicorn.log*
+backend/data/memory_store/chroma.sqlite3
+backend/data/memory_store/aec76266-2732-4f48-803b-f17507558f59/length.bin

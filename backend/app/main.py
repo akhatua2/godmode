@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 # Import from new locations
 from core.agent.agent import ChatAgent
-from db.operations import init_db, save_message_to_db, update_chat_metadata_in_db, DATABASE_URL
+from db.operations import init_db, save_message_to_db, update_chat_metadata_in_db, update_chat_title_in_db, DATABASE_URL
 from services.transcription import get_transcription
 from app.websocket.handler import run_agent_step_and_send
 from typing import List, Dict, Any, Callable, Tuple, Optional
@@ -165,6 +165,15 @@ async def websocket_endpoint(websocket: WebSocket):
                         continue
                     
                     print(f"[WebSocket ({chat_id})] Processing user_message: {text[:50]}...")
+                    
+                    # Check if this is the first message and set chat title
+                    if len(agent.memory) == 0:
+                        # Use first 50 chars of message as title, or up to first newline
+                        title = text.split('\n')[0][:50]
+                        if len(title) < len(text):
+                            title += "..."
+                        await update_chat_title_in_db(chat_id, title)
+                        print(f"[WebSocket ({chat_id})] Set initial chat title: {title}")
                     
                     # ... (logic for adding message to agent memory remains same, using retrieved agent) ...
                     if agent.pending_ask_user_tool_call_id:

@@ -67,4 +67,18 @@ async def update_chat_metadata_in_db(chat_id: str, total_cost: float, current_mo
             await db.commit()
     except Exception as e:
         print(f"[DB Error] Failed to update chat metadata for chat {chat_id}: {e}")
-        traceback.print_exc() 
+        traceback.print_exc()
+
+async def update_chat_title_in_db(chat_id: str, title: str) -> None:
+    """Update the title of a chat in the database.
+    
+    Args:
+        chat_id: The ID of the chat to update
+        title: The new title for the chat
+    """
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        await db.execute(
+            "UPDATE chats SET title = ? WHERE chat_id = ?",
+            (title, chat_id)
+        )
+        await db.commit() 
