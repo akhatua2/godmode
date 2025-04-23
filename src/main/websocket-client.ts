@@ -130,7 +130,9 @@ export function connectWebSocket(): void {
                 if (call.function.name === 'paste_at_cursor') {
                   console.log(`[WebSocket] Auto-executing paste_at_cursor: ${call.id}`);
                   // Directly execute without asking user
-                  executeTool(ws, mainWindow, call, 'approved'); 
+                  executeTool(ws, mainWindow, call, 'approved');
+                  // Ensure we send an end signal after auto-execution
+                  mainWindow?.webContents.send('stream-end');
                 } else {
                   // Store other client-side tools for approval
                   addPendingToolCall(call);

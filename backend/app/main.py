@@ -213,21 +213,40 @@ async def websocket_endpoint(websocket: WebSocket):
                         continue
                         
                     print(f"[WebSocket ({chat_id})] Processing tool_result for {len(results)} tool(s)...")
-                    # ... (logic for adding results to agent memory remains same, using retrieved agent) ...
+                    
+                    # Track which tool calls have been responded to
+                    received_tool_call_ids = set()
+                    expected_tool_call_ids = set()
+                    
+                    # Find the most recent assistant message with tool calls
+                    for msg in reversed(agent.memory):
+                        if msg.get("role") == "assistant" and msg.get("tool_calls"):
+                            for tool_call in msg["tool_calls"]:
+                                expected_tool_call_ids.add(tool_call["id"])
+                            break
+                    
+                    # Add the received results to memory
                     for result in results:
-                         tool_call_id = result.get("tool_call_id")
-                         content = str(result.get("content", ""))
-                         if tool_call_id:
-                             agent.add_message_to_memory(role="tool", tool_call_id=tool_call_id, content=content)
-                             await save_message_to_db(chat_id=chat_id, role="tool", content=content, tool_call_id=tool_call_id)
-                         else:
-                             print(f"[WebSocket ({chat_id}) WARNING] Received tool_result missing tool_call_id")
+                        tool_call_id = result.get("tool_call_id")
+                        content = str(result.get("content", ""))
+                        if tool_call_id:
+                            agent.add_message_to_memory(role="tool", tool_call_id=tool_call_id, content=content)
+                            await save_message_to_db(chat_id=chat_id, role="tool", content=content, tool_call_id=tool_call_id)
+                            received_tool_call_ids.add(tool_call_id)
+                        else:
+                            print(f"[WebSocket ({chat_id}) WARNING] Received tool_result missing tool_call_id")
+                    
+                    # Check if we have all expected tool results
+                    missing_tool_calls = expected_tool_call_ids - received_tool_call_ids
+                    if missing_tool_calls:
+                        print(f"[WebSocket ({chat_id})] Still waiting for tool results: {missing_tool_calls}")
+                        continue  # Don't proceed with agent step until we have all results
                      
                     print(f"[WebSocket ({chat_id}) DEBUG] Agent memory AFTER adding tool results:")
                     print(json.dumps(agent.memory, indent=2))
                     
                     # --- Run agent step again (using retrieved agent) --- 
-                    print(f"[WebSocket ({chat_id})] Triggering agent step after receiving tool results...")
+                    print(f"[WebSocket ({chat_id})] All tool results received. Triggering agent step...")
                     api_keys_for_step = connection_state.get("api_keys", {}) # Get session keys
                     agent_finished_turn, step_cost = await run_agent_step_and_send(
                         agent, websocket, PENDING_AGENT_QUESTIONS, api_keys=api_keys_for_step # Pass keys

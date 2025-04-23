@@ -80,7 +80,10 @@ function App() {
   const handleToolResponse = (toolCallId: string, decision: 'approved' | 'denied', result?: string) => {
     console.log(`[App] User ${decision} tool call: ${toolCallId}`);
     setRespondedToolCallIds(prevSet => new Set(prevSet).add(toolCallId));
-    setIsProcessing(decision === 'approved'); 
+    // Only set processing to true if it's not an auto-executed tool
+    if (decision === 'approved' && !result) {
+      setIsProcessing(true);
+    }
     window.electronAPI.sendToolResponse(toolCallId, decision, result);
   };
 
