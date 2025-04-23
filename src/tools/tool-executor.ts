@@ -3,11 +3,8 @@ import { exec } from 'node:child_process';
 import { BrowserWindow, clipboard } from 'electron';
 import fs from 'node:fs/promises'; // Import fs for file operations
 import path from 'node:path'; // Import path for joining
-import type { ToolCall } from './types'; // Assuming types.ts is in the same directory or adjust path
-
-// Define a base path (e.g., user's Desktop) for relative paths
-// IMPORTANT: Make this configurable or dynamic in a real app!
-const BASE_WORKING_DIR = '/Users/arpan/Desktop';
+import os from 'os'; // Import os for homedir
+import type { ToolCall } from '../types'; // Assuming types.ts is in the same directory or adjust path
 
 /**
  * Sends the result of a tool execution back to the backend via WebSocket.
@@ -95,13 +92,13 @@ function executeBashCommand(ws: WebSocket | null, mainWindow: BrowserWindow | nu
         // --- Prepare execution options and command ---
         const executionOptions = {
             timeout: 15000,
-            cwd: '/Users/arpan/Desktop' // TODO: arpandeepk Set the working directory (Consider making this configurable)
+            cwd: process.cwd() // Use current working directory instead of hardcoded Desktop path
         };
         // Construct the command to run via conda run
         const commandToExecuteInConda = `conda run -n base ${command}`;
         // --- End preparation ---
 
-        console.log(`[Exec] Running in conda env 'base', cwd '/Users/arpan/Desktop': ${commandToExecuteInConda}`);
+        console.log(`[Exec] Running in conda env 'base', cwd '${process.cwd()}': ${commandToExecuteInConda}`);
         // Use the new command and options
         exec(commandToExecuteInConda, executionOptions, (error, stdout, stderr) => {
             if (error) {
@@ -159,34 +156,25 @@ async function handleReadFile(ws: WebSocket | null, mainWindow: BrowserWindow | 
              throw new Error('Invalid file_path argument.');
         }
         
-        let absolutePath: string;
-        if (path.isAbsolute(filePathArg)) {
-            absolutePath = path.normalize(filePathArg); // Normalize absolute path
-        } else {
-            absolutePath = path.join(BASE_WORKING_DIR, filePathArg); // Join relative path
-        }
-        console.log(`[Tool Executor] Attempting to read file: ${absolutePath} (Original: ${filePathArg})`);
-
-        // Security Check: Ensure the path doesn't escape the base directory (basic check)
-        if (!absolutePath.startsWith(BASE_WORKING_DIR)) {
-             throw new Error('Access denied: Path is outside the allowed directory.');
-        }
+        // Expand ~ to home directory and normalize the path
+        const expandedPath = filePathArg.replace(/^~/, os.homedir());
+        const absolutePath = path.normalize(expandedPath);
+        console.log(`[Tool Executor] Attempting to read file: ${absolutePath}`);
 
         const content = await fs.readFile(absolutePath, 'utf-8');
         const truncatedContent = content.length > 2000 ? content.substring(0, 2000) + '... [truncated]' : content;
 
         console.log(`[Tool Executor] Successfully read file ${absolutePath}. Content length: ${content.length}`);
-        sendToolResultToBackend(ws, mainWindow, toolCallId, truncatedContent); // Send truncated content back
+        sendToolResultToBackend(ws, mainWindow, toolCallId, truncatedContent);
         if (mainWindow) {
-            // Send confirmation to frontend
-             mainWindow.webContents.send('command-output-from-main', `Successfully read file: ${filePathArg}`);
+            mainWindow.webContents.send('command-output-from-main', `Successfully read file: ${filePathArg}`);
         }
 
     } catch (error: any) {
         console.error(`[Tool Executor] Error reading file for ${toolCallId} (Path: ${filePathArg}):`, error);
         const errorMessage = `File Read Error: ${error.message}`;
         sendToolResultToBackend(ws, mainWindow, toolCallId, errorMessage);
-         if (mainWindow) {
+        if (mainWindow) {
             mainWindow.webContents.send('command-output-from-main', errorMessage);
         }
     }
@@ -215,22 +203,13 @@ async function handleEditFile(ws: WebSocket | null, mainWindow: BrowserWindow | 
         if (typeof stringToReplace !== 'string') {
             throw new Error('Invalid string_to_replace argument.');
         }
-        if (typeof newString !== 'string') { // Allow empty string for deletion
+        if (typeof newString !== 'string') {
             throw new Error('Invalid new_string argument.');
         }
         
-        let absolutePath: string;
-        if (path.isAbsolute(filePathArg)) {
-            absolutePath = path.normalize(filePathArg); // Normalize absolute path
-        } else {
-            absolutePath = path.join(BASE_WORKING_DIR, filePathArg); // Join relative path
-        }
-        console.log(`[Tool Executor] Attempting to edit file: ${absolutePath} (Original: ${filePathArg})`);
-
-         // Security Check: Ensure the path doesn't escape the base directory (basic check)
-        if (!absolutePath.startsWith(BASE_WORKING_DIR)) {
-             throw new Error('Access denied: Path is outside the allowed directory.');
-        }
+        // Use the path as is, ensuring it's normalized
+        const absolutePath = path.normalize(filePathArg);
+        console.log(`[Tool Executor] Attempting to edit file: ${absolutePath}`);
 
         // Read the current content
         const currentContent = await fs.readFile(absolutePath, 'utf-8');
@@ -239,7 +218,6 @@ async function handleEditFile(ws: WebSocket | null, mainWindow: BrowserWindow | 
         const modifiedContent = currentContent.replace(stringToReplace, newString);
 
         if (modifiedContent === currentContent) {
-            // If the content hasn't changed, the string wasn't found
             throw new Error(`String not found in file: "${stringToReplace.substring(0, 50)}${stringToReplace.length > 50 ? '...' : ''}"`);
         }
 
@@ -249,7 +227,7 @@ async function handleEditFile(ws: WebSocket | null, mainWindow: BrowserWindow | 
         const successMessage = `Successfully replaced string in file: ${filePathArg}`;
         console.log(`[Tool Executor] ${successMessage}`);
         sendToolResultToBackend(ws, mainWindow, toolCallId, successMessage);
-         if (mainWindow) {
+        if (mainWindow) {
             mainWindow.webContents.send('command-output-from-main', successMessage);
         }
 
@@ -257,7 +235,7 @@ async function handleEditFile(ws: WebSocket | null, mainWindow: BrowserWindow | 
         console.error(`[Tool Executor] Error editing file for ${toolCallId} (Path: ${filePathArg}):`, error);
         const errorMessage = `File Edit Error: ${error.message}`;
         sendToolResultToBackend(ws, mainWindow, toolCallId, errorMessage);
-         if (mainWindow) {
+        if (mainWindow) {
             mainWindow.webContents.send('command-output-from-main', errorMessage);
         }
     }

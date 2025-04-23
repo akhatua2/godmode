@@ -219,7 +219,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             </div>
           ))}
 
-          {!isProcessing && (
+          {isProcessing && (
             <button
               type="button"
               onClick={handleStopProcessing}

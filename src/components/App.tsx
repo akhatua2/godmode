@@ -3,7 +3,8 @@ import './App.css'; // Import CSS
 import { ChatInput } from './ChatInput'; // Import the new component
 import { ChatMessage } from './ChatMessage'; // Import the new message component
 import { Settings } from './Settings'; // Import Settings component
-import { Toast } from './Toast'; // Add this import
+import { Toast } from './Toast'; // Add this importv
+import { ChatHistory } from './ChatHistory';
 
 // Import the type definition for cleaner code
 import type { Message, ChatMessageProps, ToolCall, AgentStepUpdateData, CostUpdatePayload } from '../types';
@@ -64,6 +65,36 @@ function App() {
   // Add toast state
   const [toast, setToast] = useState<{message: string; visible: boolean} | null>(null);
 
+
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [chatTitles, setChatTitles] = useState<string[]>([]);
+  const historyButtonRef = useRef<HTMLButtonElement>(null);
+
+
+  // Add new function to fetch chat titles
+  const fetchChatTitles = async () => {
+    try {
+      console.log('[App] Fetching chat titles from backend...');
+      const response = await fetch('http://localhost:8000/chats');
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data = await response.json();
+      console.log('[App] Received chat data:', data);
+      
+      // Extract titles from the chat info objects
+      const titles = data.chats.map((chat: { title: string }) => 
+        chat.title || 'Untitled Chat'
+      );
+      console.log('[App] Extracted chat titles:', titles);
+      setChatTitles(titles);
+    } catch (error) {
+      console.error('[App] Failed to fetch chat titles:', error);
+      setChatTitles([]); // Set empty array on error
+    }
+  };
+  
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }
@@ -87,33 +118,12 @@ function App() {
     window.electronAPI.sendToolResponse(toolCallId, decision, result);
   };
 
-  // --- Handler for API Key Input Change --- // REMOVED
-  // const handleApiKeyInputChange = (provider: string, value: string) => { // REMOVED
-  //   setApiKeysInput(prev => ({ ...prev, [provider]: value })); // REMOVED
-  // }; // REMOVED
-  // --- End API Key Input Change Handler --- // REMOVED
-
-  // --- Handler for Saving API Keys --- // REMOVED
-  // const handleSaveApiKeys = useCallback(() => { // REMOVED
-  //   console.log('[App] Saving API Keys:', apiKeysInput); // REMOVED
-  //   // Filter out empty keys before sending // REMOVED
-  //   const keysToSend: { [provider: string]: string } = {}; // REMOVED
-  //   for (const provider in apiKeysInput) { // REMOVED
-  //     if (apiKeysInput[provider].trim() !== '') { // REMOVED
-  //       keysToSend[provider] = apiKeysInput[provider].trim(); // REMOVED
-  //     } // REMOVED
-  //   } // REMOVED
-  //   if (Object.keys(keysToSend).length > 0) { // REMOVED
-  //     window.electronAPI.sendApiKeys(keysToSend); // REMOVED
-  //     // Optional: Add visual feedback or clear inputs after saving // REMOVED
-  //     console.log('[App] Sent API keys to main process.'); // REMOVED
-  //     setShowApiKeyInputs(false); // Hide inputs after saving // REMOVED
-  //   } else { // REMOVED
-  //     console.log('[App] No API keys entered to save.'); // REMOVED
-  //     setShowApiKeyInputs(false); // Still hide if nothing was entered // REMOVED
-  //   } // REMOVED
-  // }, [apiKeysInput]); // REMOVED
-  // --- End Save API Keys Handler --- // REMOVED
+  // Add effect to fetch chat titles when history is opened
+  useEffect(() => {
+    if (isHistoryOpen) {
+      fetchChatTitles();
+    }
+  }, [isHistoryOpen]);
 
   // --- Handler for saving keys from Settings component --- // ADDED
   const handleSaveKeysFromSettings = useCallback((keysFromSettings: { [provider: string]: string }) => { // ADDED
@@ -417,6 +427,17 @@ function App() {
             </svg>
           </button>
           <button
+            ref={historyButtonRef}
+            onClick={() => setIsHistoryOpen(!isHistoryOpen)}
+            className="history-button"
+            title="Chat History"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 8v4l3 3"></path>
+              <path d="M3.05 11a9 9 0 1 1 .5 4"></path>
+            </svg>
+          </button>
+          <button
             onClick={() => setIsSettingsOpen(true)}
             className="settings-toggle-button"
             title="Settings"
@@ -426,6 +447,22 @@ function App() {
               <circle cx="12" cy="12" r="3"/>
             </svg>
           </button>
+          
+          {/* Position the ChatHistory component here, right after the buttons */}
+          <ChatHistory
+            isOpen={isHistoryOpen}
+            onClose={() => {
+              console.log('[App] Closing chat history dropdown');
+              setIsHistoryOpen(false);
+            }}
+            chatTitles={chatTitles}
+            onSelectChat={(title) => {
+              console.log('[App] Selected chat title:', title);
+              setIsHistoryOpen(false);
+              // TODO: Implement chat selection logic
+            }}
+            anchorRef={historyButtonRef}
+          />
         </div>
       </div>
 

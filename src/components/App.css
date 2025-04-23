@@ -45,7 +45,7 @@
   border: none; /* Remove border */
   border-radius: 4px; /* Slightly smaller radius */
   /* padding: 2px; /* Reduce padding */
-  padding: 8px 2px 2px 2px; /* Add top padding (top, right, bottom, left) */
+  padding: 4px; /* Add top padding (top, right, bottom, left) */
   width: 20px; /* Reduce width */
   height: 20px; /* Reduce height */
   display: flex; /* Enable flexbox */
@@ -54,6 +54,7 @@
   cursor: pointer; /* Cursor style when hovering over the button */
   -webkit-app-region: no-drag; /* Explicitly make button not draggable */
   transition: background-color 0.2s ease; /* Smooth transition on hover */
+  margin-top: 6px;
 }
 
 .settings-toggle-button svg, .new-chat-button svg {
@@ -236,68 +237,6 @@
   background-color: rgba(0, 0, 0, 0.4);
 }
 
-/* === Tool Request Styles === */
-/* Commenting out older styles to prevent conflicts with .tool-terminal-* rules */
-/*
-.message-tool-request {
-  padding: 10px 15px;
-  border-radius: 8px;
-  background-color: rgba(255, 223, 186, 0.2); 
-  border: 1px solid rgba(255, 165, 0, 0.4); 
-  color: #eee; 
-  align-self: flex-start; 
-  max-width: 90%; 
-}
-
-.tool-request-content p {
-    margin: 5px 0;
-}
-
-.tool-command {
-    background-color: rgba(0, 0, 0, 0.3); 
-    padding: 8px;
-    border-radius: 4px;
-    margin: 8px 0;
-    overflow-x: auto; 
-}
-
-.tool-command code {
-    font-family: monospace;
-    font-size: 0.85rem; 
-    color: #f0f0f0; 
-}
-
-.tool-buttons {
-    margin-top: 10px;
-    display: flex;
-    gap: 10px; 
-}
-
-.tool-button {
-    padding: 6px 12px;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    font-weight: bold;
-    transition: background-color 0.2s ease;
-}
-
-.tool-button.approve {
-    background-color: rgba(0, 128, 0, 0.6); 
-    color: white;
-}
-.tool-button.approve:hover {
-    background-color: rgba(0, 128, 0, 0.8);
-}
-
-.tool-button.deny {
-    background-color: rgba(220, 20, 60, 0.6); 
-    color: white;
-}
-.tool-button.deny:hover {
-    background-color: rgba(220, 20, 60, 0.8);
-}
-*/
 
 /* === NEW Terminal Style Tool Request Rules === */
 
@@ -315,11 +254,6 @@
   /* Remove overrides if base message-tool-request styles are removed/changed */
   /* padding: 12px !important; 
   border: 1px solid #404652 !important; */
-}
-
-.tool-terminal-content {
-  /* Remove margin-bottom if prompt is gone */
-  /* margin-bottom: 20px; */
 }
 
 /* Remove prompt style */
@@ -468,4 +402,31 @@
   40% {
     transform: scale(1.0);
   }
+}
+
+.history-button {
+  background: transparent;
+  color: #ccc;
+  border: none;
+  border-radius: 4px;
+  padding: 4px;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  transition: background-color 0.2s ease;
+  margin-top: 6px;
+}
+
+.history-button svg {
+  width: 1em;
+  height: 1em;
+  display: block;
+}
+
+.history-button:hover {
+  background-color: rgba(255, 255, 255, 0.2);
 }

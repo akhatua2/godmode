@@ -10,12 +10,15 @@ import aiosqlite # ADDED
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from dotenv import load_dotenv
+from fastapi.middleware.cors import CORSMiddleware
 # Import from new locations
 from core.agent.agent import ChatAgent
 from db.operations import init_db, save_message_to_db, update_chat_metadata_in_db, update_chat_title_in_db, DATABASE_URL
 from services.transcription import get_transcription
 from app.websocket.handler import run_agent_step_and_send
 from typing import List, Dict, Any, Callable, Tuple, Optional
+from contextlib import asynccontextmanager
+
 # --- Import Server Tool Registry --- 
 # --- End Import --- 
 # --- Import Database Functions ---
@@ -30,12 +33,28 @@ load_dotenv()
 # Key: connection_key (e.g., str(websocket.client)), Value: Dict containing chat_id, agent, total_cost
 ACTIVE_CONNECTIONS: Dict[str, Dict[str, Any]] = {}
 # --- End Global State ---
-
-app = FastAPI()
-
-@app.on_event("startup")
-async def startup_event():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup code (runs before the application starts)
     await init_db()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],  # Specify the origin of your frontend app
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods
+    allow_headers=["*"],  # Allows all headers
+)
+
+# @app.on_event("startup")
+# async def startup_event():
+#     await init_db()
+
 
 # --- Shared state for pending agent questions --- 
 PENDING_AGENT_QUESTIONS: Dict[str, Dict[str, asyncio.Future]] = {}
@@ -415,19 +434,34 @@ async def read_root():
     return {"message": "FastAPI backend is running (WebSocket at /ws)"}
 
 # --- NEW: Endpoint to list existing chats --- 
+from pydantic import BaseModel
+
+class ChatInfo(BaseModel):
+    chat_id: str
+    title: str
+    last_active_at: str
+
 @app.get("/chats")
 async def list_chats():
-    """Retrieves a list of chats from the database, ordered by last activity."""
+    """Retrieves the last 10 chats from the database, ordered by last activity."""
     chats = []
     try:
+        print("[/chats] Fetching last 10 chats...")
         async with aiosqlite.connect(DATABASE_URL) as db:
             db.row_factory = aiosqlite.Row # Access columns by name
             async with db.execute(
-                "SELECT chat_id, title, created_at, last_active_at, current_model, total_cost FROM chats ORDER BY last_active_at DESC"
+                "SELECT title, chat_id, last_active_at FROM chats ORDER BY last_active_at DESC LIMIT 10"
             ) as cursor:
                 async for row in cursor:
-                    chats.append(dict(row)) # Convert Row object to dictionary
-        return chats
+                    title = row['title'] if row['title'] else "Untitled Chat"
+                    print(f"[/chats] Found chat - ID: {row['chat_id']}, Title: {title}, Last Active: {row['last_active_at']}")
+                    chats.append(ChatInfo(
+                        chat_id=row['chat_id'],
+                        title=title,
+                        last_active_at=row['last_active_at']
+                    ))
+        print(f"[/chats] Returning: \n {chats}")
+        return {"chats": chats}
     except Exception as e:
         print(f"[DB Error] Failed to list chats: {e}")
         traceback.print_exc()
