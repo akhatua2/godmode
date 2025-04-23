@@ -157,6 +157,7 @@ background-color: rgba(0, 255, 0, 0.2); /* Example: translucent green */
   flex-wrap: wrap; /* Allow items to wrap to the next line */
   row-gap: 4px; /* Add gap between rows when wrapping */
   column-gap: 4px; /* Add gap between columns */
+  justify-content: space-between; /* Add space between items */
 }
 
 /* --- Selected Text Context Block Styles --- */
@@ -238,8 +239,8 @@ background-color: rgba(0, 255, 0, 0.2); /* Example: translucent green */
 /* --- Input Row Layout --- */
 .chat-input-main-row {
   display: flex;
-  align-items: flex-end; /* Align items to bottom for better textarea alignment */
-  gap: 8px; /* Space between mic and textarea */
+  align-items: center;
+  gap: 8px;
 }
 
 /* --- NEW: Waveform Placeholder Styles --- */
@@ -300,3 +301,36 @@ background-color: rgba(0, 255, 0, 0.2); /* Example: translucent green */
 .chat-input-main-row .chat-input-textarea {
   flex-grow: 1; /* Allow textarea to take remaining space */
 }
+
+/* Stop Button Styles */
+.stop-processing-button {
+  display: inline-flex;
+  align-items: center;
+  background-color: #383838;
+  color: #cccccc;
+  padding: 3px 6px;
+  border-radius: 4px;
+  border: 1px solid #555555;
+  font-size: 0.6rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+  margin-left: auto; /* Push to the right */
+}
+
+.stop-processing-button:hover {
+  background-color: #4a4a4a;
+  border-color: #777777;
+}
+
+.stop-processing-button.active {
+  background-color: #4a4a4a;
+  border-color: #888888;
+  color: #ffffff;
+}
+
+.stop-processing-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+

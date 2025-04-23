@@ -201,6 +201,16 @@ const electronAPI = {
     toastNotificationListener = callback;
     ipcRenderer.on('toast-notification', toastNotificationListener);
   },
+
+  // --- Stop Processing ---
+  stopProcessing: () => {
+    console.log('[Preload] Sending stop-processing IPC');
+    ipcRenderer.send('stop-processing');
+    // Show toast notification
+    ipcRenderer.send('toast-notification', {
+      text: 'Stop command sent'
+    });
+  },
 };
 
 // --- cleanup API Definition ---

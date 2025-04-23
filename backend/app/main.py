@@ -119,7 +119,9 @@ async def websocket_endpoint(websocket: WebSocket):
             "chat_id": chat_id,
             "agent": agent,
             "total_cost": session_total_cost,
-            "api_keys": {} # ADDED: Initialize empty dict for session API keys
+            "api_keys": {}, # ADDED: Initialize empty dict for session API keys
+            "stop_requested": False, # Add stop signal flag
+            "current_tool_calls": set() # Track active tool calls
         }
         print(f"WebSocket connection {connection_key} established for chat_id: {chat_id}")
         
@@ -198,7 +200,9 @@ async def websocket_endpoint(websocket: WebSocket):
                     # --- Run the agent step (using retrieved agent) --- 
                     api_keys_for_step = connection_state.get("api_keys", {}) # Get session keys
                     agent_finished_turn, step_cost = await run_agent_step_and_send(
-                        agent, websocket, PENDING_AGENT_QUESTIONS, api_keys=api_keys_for_step # Pass keys
+                        agent, websocket, PENDING_AGENT_QUESTIONS, 
+                        api_keys=api_keys_for_step, # Pass keys
+                        connection_state=connection_state # Pass connection state
                     )
                     if step_cost is not None:
                         connection_state["total_cost"] += step_cost
@@ -258,7 +262,9 @@ async def websocket_endpoint(websocket: WebSocket):
                     print(f"[WebSocket ({chat_id})] All tool results received. Triggering agent step...")
                     api_keys_for_step = connection_state.get("api_keys", {}) # Get session keys
                     agent_finished_turn, step_cost = await run_agent_step_and_send(
-                        agent, websocket, PENDING_AGENT_QUESTIONS, api_keys=api_keys_for_step # Pass keys
+                        agent, websocket, PENDING_AGENT_QUESTIONS, 
+                        api_keys=api_keys_for_step, # Pass keys
+                        connection_state=connection_state # Pass connection state
                     )
                     if step_cost is not None:
                         connection_state["total_cost"] += step_cost
@@ -351,6 +357,18 @@ async def websocket_endpoint(websocket: WebSocket):
                         print(f"[WebSocket ({chat_id}) Error] Unexpected error during transcription processing: {trans_exc}")
                         traceback.print_exc()
                         await websocket.send_text(json.dumps({"type": "error", "content": f"Unexpected transcription error: {trans_exc}"}))
+                
+                elif message_type == "stop":
+                    print(f"[WebSocket ({chat_id})] Received stop request")
+                    connection_state["stop_requested"] = True
+                    
+                    # Send acknowledgment back to client
+                    await websocket.send_text(json.dumps({"type": "info", "content": "Stop request received"}))
+                    # Note: The actual stopping and tool cancellation will happen in the websocket handler
+                    
+                    # Reset the stop_requested flag after handling the stop request
+                    connection_state["stop_requested"] = False
+                    print(f"[WebSocket ({chat_id})] Reset stop_requested flag")
                 
                 else:
                     print(f"[WebSocket ({chat_id}) WARNING] Invalid message type received: {message_type}")

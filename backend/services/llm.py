@@ -15,7 +15,8 @@ async def get_llm_response_stream(
     messages: List[Dict[str, Any]],
     temperature: float = 0.7,
     max_tokens: Optional[int] = None,
-    api_keys: Optional[Dict[str, str]] = None
+    api_keys: Optional[Dict[str, str]] = None,
+    connection_state: Optional[Dict] = None  # Add connection_state parameter
 ) -> AsyncGenerator[ChatCompletionChunk | Dict[str, str] | Tuple[str, float], None]:
     """Gets a streaming response from LiteLLM, yielding chunks or error dicts."""
     stream_kwargs = {
@@ -72,12 +73,15 @@ async def get_llm_response_stream(
 
         # Initialize calculated_cost outside the loop, before finally
         calculated_cost = 0.0 
-        response_content = "" # Initialize response_content
+        response_content = ""
         # llm_provider_name = model_name.split('/')[0] if '/' in model_name else model_name # REMOVED from here
 
         async for chunk in stream_object:
-            # Assume it's a ChatCompletionChunk if not an error dict
-            
+            # Check for stop signal
+            if connection_state and connection_state.get("stop_requested"):
+                print("[LLM Client] Stop requested during streaming")
+                break
+
             # --- Capture Usage from Chunk --- 
             # LiteLLM seems to put usage info in the final chunk object
             if hasattr(chunk, 'usage') and chunk.usage: 
@@ -93,7 +97,7 @@ async def get_llm_response_stream(
             print(f"[LLM Client DEBUG] Raw Chunk: {chunk.model_dump_json(indent=2)}")
             # --- End Debug Logging --- 
             
-            yield chunk 
+            yield chunk
             
         # --- Post-Stream Cost Calculation using token_counter --- 
         try:

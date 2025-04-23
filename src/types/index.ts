@@ -98,6 +98,8 @@ export interface IElectronAPI {
   onToastNotification: (callback: (event: IpcRendererEvent, data: { text: string }) => void) => void;
   // --- Start New Chat ---
   startNewChat: () => void;
+  // --- Stop Processing ---
+  stopProcessing: () => void;
 }
 
 // Interface for the cleanup functions exposed by the preload script

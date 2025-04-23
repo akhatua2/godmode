@@ -128,7 +128,7 @@ class ChatAgent:
         self.memory.append(message)
 
     # Refactored step method - handles one LLM call based on current memory
-    async def step(self, api_keys: Optional[Dict[str, str]] = None, callbacks: Optional[List[Callable]] = None) -> AsyncGenerator[str | Dict[str, Any] | Tuple[str, float], None]:
+    async def step(self, api_keys: Optional[Dict[str, str]] = None, callbacks: Optional[List[Callable]] = None, connection_state: Optional[Dict] = None) -> AsyncGenerator[str | Dict[str, Any] | Tuple[str, float], None]:
         """Performs one step of interaction: gets LLM response and yields content/tool request."""
         print("[Agent] Executing agent step...")
         
@@ -139,7 +139,8 @@ class ChatAgent:
         response_stream = get_llm_response_stream(
             model_name=self.model_name,
             messages=self.memory,
-            api_keys=api_keys # Pass keys
+            api_keys=api_keys, # Pass keys
+            connection_state=connection_state # Pass connection state
         )
         # --- End LLM Client Call --- 
 
@@ -156,6 +157,11 @@ class ChatAgent:
         extracted_cost = None # Variable to store cost tuple value
 
         async for chunk_or_error in response_stream:
+            # Check for stop signal
+            if connection_state and connection_state.get("stop_requested"):
+                print("[Agent] Stop requested during stream processing")
+                break
+
             # --- Check for final_cost tuple FIRST --- 
             if isinstance(chunk_or_error, tuple) and chunk_or_error[0] == "final_cost":
                 extracted_cost = chunk_or_error[1] # Store the cost value

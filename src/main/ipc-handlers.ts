@@ -16,6 +16,7 @@ export function registerIpcHandlers(): void {
   registerSetLlmModelHandler();
   registerSendAudioInputHandler();
   registerStartNewChatHandler();
+  registerStopProcessingHandler();
 }
 
 /**
@@ -211,3 +212,13 @@ function registerStartNewChatHandler(): void {
     createNewChatSession();
   });
 } 
+
+/**
+ * Registers the handler for stopping processing
+ */
+function registerStopProcessingHandler(): void {
+  ipcMain.on('stop-processing', () => {
+    console.log('[IPC] Received stop-processing request');
+    sendToWebSocket({ type: 'stop' });
+  });
+}

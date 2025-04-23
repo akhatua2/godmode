@@ -181,6 +181,11 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     }
   };
 
+  const handleStopProcessing = () => {
+    console.log('[ChatInput] Sending stop request');
+    window.electronAPI.stopProcessing();
+  };
+
   return (
     <form onSubmit={handleSubmit} className="p-2 border-gray-200">
       <div className="bg-white border border-gray-200 rounded-lg overflow-hidden p-2 chat-input-container">
@@ -213,12 +218,23 @@ export const ChatInput: React.FC<ChatInputProps> = ({
               </button>
             </div>
           ))}
+
+          {!isProcessing && (
+            <button
+              type="button"
+              onClick={handleStopProcessing}
+              className="stop-processing-button"
+              title="Stop processing"
+            >
+              Stop
+            </button>
+          )}
         </div>
         {/* --- End Wrapper --- */}
 
         {/* --- Input Row with Waveform Placeholder --- */}
         <div className="chat-input-main-row">
-          {/* Textarea */}
+          {/* Textarea - Removed disabled state */}
           <textarea
             ref={textareaRef}
             value={inputValue}
@@ -228,7 +244,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             }}
             onKeyDown={handleKeyDown}
             placeholder={isRecording ? "Recording... Speak now!" : "Type or record message..."}
-            disabled={isProcessing || isRecording} // Disable text input while recording or processing
             rows={1}
             className="chat-input-textarea"
           />

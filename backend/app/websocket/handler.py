@@ -20,7 +20,8 @@ async def run_agent_step_and_send(
     agent: ChatAgent, 
     websocket: WebSocket, 
     pending_questions: Dict[str, Dict[str, asyncio.Future]],
-    api_keys: Optional[Dict[str, str]] = None
+    api_keys: Optional[Dict[str, str]] = None,
+    connection_state: Optional[Dict[str, Any]] = None  # Add connection state parameter
 ) -> Tuple[bool, Optional[float]]:
     """Run one step of agent interaction and send results via websocket.
     Returns (finished_turn: bool, cost: Optional[float])
@@ -29,7 +30,32 @@ async def run_agent_step_and_send(
     final_cost_from_agent = None
     
     try:
-        async for item in agent.step(api_keys=api_keys):
+        async for item in agent.step(api_keys=api_keys, connection_state=connection_state):
+            # Check for stop signal
+            if connection_state and connection_state.get("stop_requested"):
+                print("[WebSocket] Stop requested, ending agent step")
+                # If there are any tool calls in the last assistant message, add cancellation responses
+                for msg in reversed(agent.memory):
+                    if msg.get("role") == "assistant" and msg.get("tool_calls"):
+                        for tool_call in msg["tool_calls"]:
+                            tool_id = tool_call["id"]
+                            # Only add cancellation response if there isn't already a response for this tool
+                            if not any(m.get("tool_call_id") == tool_id for m in agent.memory if m.get("role") == "tool"):
+                                cancellation_content = f"Tool execution cancelled: Operation interrupted by user"
+                                agent.add_message_to_memory(
+                                    role="tool",
+                                    content=cancellation_content,
+                                    tool_call_id=tool_id
+                                )
+                        break  # Only handle the most recent assistant message
+                
+                await websocket.send_text(json.dumps({
+                    "type": "info",
+                    "content": "Operation stopped by user request."
+                }))
+                await websocket.send_text(json.dumps({"type": "end", "content": ""}))
+                return True, final_cost_from_agent
+
             if isinstance(item, tuple) and item[0] == "final_cost":
                 final_cost_from_agent = item[1]
                 print(f"[run_agent_step_and_send] Captured final_cost: {final_cost_from_agent}")
@@ -118,14 +144,55 @@ async def run_agent_step_and_send(
 
                     # Send client-side tool calls if any
                     if client_tool_calls:
+                        # Add tool calls to tracking set
+                        if connection_state:
+                            connection_state["current_tool_calls"].update(call["id"] for call in client_tool_calls)
+                        
                         await websocket.send_text(json.dumps({
                             "type": "tool_call_request",
                             "tool_calls": client_tool_calls
                         }))
                         
-                        # Wait for all client tool responses
+                        # Wait for all client tool responses or stop signal
                         while pending_tool_calls:
                             try:
+                                # Check for stop signal before waiting for response
+                                if connection_state and connection_state.get("stop_requested"):
+                                    print("[WebSocket] Stop requested while waiting for tool results")
+                                    # Only add cancellation responses for tool calls that haven't received responses yet
+                                    for tool_id, tool_call in pending_tool_calls.items():
+                                        # Skip if this tool call already has a response in agent memory
+                                        if any(m.get("tool_call_id") == tool_id for m in agent.memory if m.get("role") == "tool"):
+                                            print(f"[WebSocket] Tool {tool_id} already has response, skipping cancellation")
+                                            continue
+                                            
+                                        print(f"[WebSocket] Adding cancellation response for tool {tool_id}")
+                                        cancellation_content = f"Tool execution cancelled: Operation interrupted by user"
+                                        # Add to agent memory
+                                        agent.add_message_to_memory(
+                                            role="tool",
+                                            content=cancellation_content,
+                                            tool_call_id=tool_id
+                                        )
+                                        # Save to database
+                                        chat_id = connection_state.get("chat_id")
+                                        if chat_id:
+                                            from main import save_message_to_db  # Import at use to avoid circular imports
+                                            await save_message_to_db(
+                                                chat_id=chat_id,
+                                                role="tool",
+                                                content=cancellation_content,
+                                                tool_call_id=tool_id
+                                            )
+                                        # Remove from tracking
+                                        if connection_state:
+                                            connection_state["current_tool_calls"].discard(tool_id)
+                                    pending_tool_calls.clear()  # Clear after handling all pending calls
+                                    
+                                    await websocket.send_text(json.dumps({"type": "info", "content": "Tool execution interrupted by user request."}))
+                                    await websocket.send_text(json.dumps({"type": "end", "content": ""}))
+                                    return True, final_cost_from_agent
+
                                 response = await websocket.receive_text()
                                 response_data = json.loads(response)
                                 
@@ -141,28 +208,45 @@ async def run_agent_step_and_send(
                                                 tool_call_id=tool_call_id
                                             )
                                             del pending_tool_calls[tool_call_id]
+                                            # Remove from tracking set
+                                            if connection_state:
+                                                connection_state["current_tool_calls"].discard(tool_call_id)
                                             # If this was a denial, trigger next agent step
                                             if "User denied execution" in content:
                                                 print("[WebSocket] Tool execution denied, triggering next agent step")
                                                 agent_finished, cost_from_nested = await run_agent_step_and_send(
-                                                    agent, websocket, pending_questions, api_keys=api_keys
+                                                    agent, websocket, pending_questions, 
+                                                    api_keys=api_keys,
+                                                    connection_state=connection_state
                                                 )
                                                 return agent_finished, final_cost_from_agent if final_cost_from_agent is not None else cost_from_nested
                             except Exception as e:
                                 print(f"Error processing tool response: {e}")
+                                # Clean up tracking on error
+                                if connection_state:
+                                    for tool_id in pending_tool_calls:
+                                        connection_state["current_tool_calls"].discard(tool_id)
                                 break
 
                     # If we had server tools, trigger next step
                     if server_tool_calls:
                         print("[WebSocket] Triggering next agent step after server tool execution...")
                         agent_finished, cost_from_nested = await run_agent_step_and_send(
-                            agent, websocket, pending_questions, api_keys=api_keys
+                            agent, websocket, pending_questions, 
+                            api_keys=api_keys,
+                            connection_state=connection_state
                         )
                         return agent_finished, final_cost_from_agent if final_cost_from_agent is not None else cost_from_nested
 
-                    # If we only had client tools and they're all done, continue
+                    # If we only had client tools and they're all done, trigger next step
                     if not server_tool_calls and not pending_tool_calls:
-                        continue
+                        print("[WebSocket] All client tools finished, triggering next agent step...")
+                        agent_finished, cost_from_nested = await run_agent_step_and_send(
+                            agent, websocket, pending_questions, 
+                            api_keys=api_keys,
+                            connection_state=connection_state
+                        )
+                        return agent_finished, final_cost_from_agent if final_cost_from_agent is not None else cost_from_nested
 
                 elif item.get("type") == "error":
                     await websocket.send_text(json.dumps(item))
@@ -188,3 +272,102 @@ async def run_agent_step_and_send(
         except Exception:
             pass
         return False, final_cost_from_agent
+
+async def process_agent_response(self, agent: ChatAgent, connection_state: Dict) -> None:
+    """Process agent's response stream and handle tool calls."""
+    try:
+        async for response in agent.step(api_keys=self.api_keys, connection_state=connection_state):
+            # Check for stop signal at the start of each iteration
+            if connection_state.get("stop_requested"):
+                print("[WebSocket] Stop requested during agent processing")
+                # Send stop acknowledgment
+                await self.send_message({
+                    "type": "info",
+                    "content": "Operation stopped by user request."
+                })
+                await self.send_message({
+                    "type": "end",
+                    "content": ""
+                })
+                break
+
+            if isinstance(response, str):
+                # Handle content chunks
+                await self.send_message({
+                    "type": "content",
+                    "content": response
+                })
+            elif isinstance(response, dict):
+                # Handle tool calls
+                if response.get("type") == "tool_call":
+                    tool_call = response["tool_call"]
+                    tool_id = tool_call["id"]
+                    
+                    # Check for stop signal before executing tool
+                    if connection_state.get("stop_requested"):
+                        print("[WebSocket] Stop requested before tool execution")
+                        # Send stop acknowledgment
+                        await self.send_message({
+                            "type": "info",
+                            "content": "Operation stopped by user request."
+                        })
+                        await self.send_message({
+                            "type": "end",
+                            "content": ""
+                        })
+                        break
+                        
+                    # Execute tool and get result
+                    tool_result = await self.execute_tool(tool_call)
+                    
+                    # Check for stop signal after tool execution
+                    if connection_state.get("stop_requested"):
+                        print("[WebSocket] Stop requested after tool execution")
+                        # Send stop acknowledgment
+                        await self.send_message({
+                            "type": "info",
+                            "content": "Operation stopped by user request."
+                        })
+                        await self.send_message({
+                            "type": "end",
+                            "content": ""
+                        })
+                        break
+                        
+                    # Add tool result to agent's memory
+                    agent.add_message({
+                        "role": "tool",
+                        "tool_call_id": tool_id,
+                        "name": tool_call["name"],
+                        "content": tool_result
+                    })
+                    
+                    # Send tool result to client
+                    await self.send_message({
+                        "type": "tool_result",
+                        "tool_call_id": tool_id,
+                        "result": tool_result
+                    })
+                    
+                    # Continue processing with updated memory
+                    continue
+                elif isinstance(response, tuple) and response[0] == "final_cost":
+                    # Handle cost information
+                    await self.send_message({
+                        "type": "cost",
+                        "cost": response[1]
+                    })
+            
+        # Send end message if we haven't already (i.e., if we didn't break due to stop)
+        if not connection_state.get("stop_requested"):
+            await self.send_message({
+                "type": "end",
+                "content": ""
+            })
+            
+    except Exception as e:
+        print(f"[WebSocket] Error processing agent response: {str(e)}")
+        await self.send_message({
+            "type": "error",
+            "error": str(e)
+        })

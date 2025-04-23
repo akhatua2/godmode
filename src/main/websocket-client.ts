@@ -203,6 +203,16 @@ export function connectWebSocket(): void {
           mainWindow.webContents.send('transcription-result-from-main', transcribedText);
           break;
 
+        case 'info':
+          console.log(`[WebSocket] Info from backend: ${messageData.content}`);
+          // Reset streaming state and send end signal for stop requests
+          isStreaming = false;
+          mainWindow.webContents.send('stream-end');
+          mainWindow.webContents.send('toast-notification', { 
+            text: messageData.content
+          });
+          break;
+
         default:
           // Handle potential older format or unexpected messages gracefully
           // If we received something unexpected, assume any active stream ends
