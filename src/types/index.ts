@@ -94,6 +94,10 @@ export interface IElectronAPI {
   sendApiKeys: (keys: { [provider: string]: string }) => void;
   // --- Backend Status Messages ---
   onBackendStatusMessage: (callback: (event: IpcRendererEvent, data: { statusType: 'error' | 'warning' | 'info', text: string }) => void) => void;
+  // --- Toast Notification ---
+  onToastNotification: (callback: (event: IpcRendererEvent, data: { text: string }) => void) => void;
+  // --- Start New Chat ---
+  startNewChat: () => void;
 }
 
 // Interface for the cleanup functions exposed by the preload script
@@ -125,6 +129,8 @@ export interface ICleanupAPI {
     removeSendApiKeysListener?: () => void;
     // --- Backend Status Cleanup ---
     removeBackendStatusMessageListener?: () => void;
+    // --- Toast Notification Cleanup ---
+    removeToastNotificationListener: () => void;
 }
 
 // Extend the Window interface to include our exposed APIs

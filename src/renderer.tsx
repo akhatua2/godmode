@@ -3,7 +3,7 @@
  * To learn more about the differences between the "main" and the "renderer" context in
  * Electron, visit:
  *
- * https://electronjs.org/docs/tutorial/process-model
+ * https://electronjs.org/docs/tutorial/application-architecture#main-and-renderer-processes
  *
  * By default, Node.js integration in this file is disabled. When enabling Node.js integration
  * in a renderer process, please be aware of potential security implications. You can read
@@ -29,7 +29,7 @@
 // Add React specific imports and mounting logic
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import App from './App'; // Import our main App component
+import App from './components/App'; // Import our main App component from the components directory
 
 console.log('👋 Renderer script loaded'); // Updated log message
 

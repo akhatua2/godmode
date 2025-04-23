@@ -2,7 +2,7 @@
 // https://www.electronjs.org/docs/latest/tutorial/process-model#preload-scripts
 
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
-import type { Message, ToolCall, AgentStepUpdateData, CostUpdatePayload } from './types'; // Import types
+import type { Message, ToolCall, AgentStepUpdateData, CostUpdatePayload } from '../types'; // Import types
 
 // --- Define types for new messages (Optional but recommended) ---
 
@@ -36,6 +36,12 @@ let selectedTextContextListener: ((event: IpcRendererEvent, content: string) => 
 
 // --- Listener for Transcription Result --- 
 let transcriptionResultListener: ((event: IpcRendererEvent, text: string) => void) | null = null;
+
+// --- Add variable for the backend status listener ---
+let backendStatusListener: ((event: IpcRendererEvent, data: { statusType: string; text: string; }) => void) | null = null;
+
+// --- Add variable for toast notification listener ---
+let toastNotificationListener: ((event: IpcRendererEvent, data: { text: string }) => void) | null = null;
 
 // --- electronAPI Definition ---
 const electronAPI = {
@@ -175,16 +181,27 @@ const electronAPI = {
 
   // --- API Keys --- 
   sendApiKeys: (keys: { [provider: string]: string }) => ipcRenderer.send('send-api-keys', keys),
+  
+  // --- Start New Chat --- 
+  startNewChat: () => {
+    console.log('[Preload] Sending start-new-chat IPC');
+    ipcRenderer.send('start-new-chat');
+  },
+  
   // --- Backend Status Listener ---
   onBackendStatusMessage: (callback: (event: IpcRendererEvent, data: { statusType: 'error' | 'warning' | 'info', text: string }) => void) => {
     if (backendStatusListener) ipcRenderer.removeListener('backend-status-message', backendStatusListener);
     backendStatusListener = callback;
     ipcRenderer.on('backend-status-message', backendStatusListener);
   },
+  
+  // --- Toast Notification Listener ---
+  onToastNotification: (callback: (event: IpcRendererEvent, data: { text: string }) => void) => {
+    if (toastNotificationListener) ipcRenderer.removeListener('toast-notification', toastNotificationListener);
+    toastNotificationListener = callback;
+    ipcRenderer.on('toast-notification', toastNotificationListener);
+  },
 };
-
-// --- Add variable for the listener function ---
-let backendStatusListener: ((event: IpcRendererEvent, data: { statusType: string; text: string; }) => void) | null = null;
 
 // --- cleanup API Definition ---
 const cleanupAPI = {
@@ -296,13 +313,19 @@ const cleanupAPI = {
         if (backendStatusListener) ipcRenderer.removeListener('backend-status-message', backendStatusListener);
         backendStatusListener = null;
     },
+    
+    // --- Toast Notification Cleanup ---
+    removeToastNotificationListener: () => {
+      if (toastNotificationListener) ipcRenderer.removeListener('toast-notification', toastNotificationListener);
+      toastNotificationListener = null;
+    },
 };
 
 // --- Expose to Renderer --- 
 // Use contextBridge to securely expose the API functions
 try {
   contextBridge.exposeInMainWorld('electronAPI', electronAPI);
-  contextBridge.exposeInMainWorld('cleanup', cleanupAPI); // Expose the cleanup API
+  contextBridge.exposeInMainWorld('cleanup', cleanupAPI); // Expose the cleanup API with the correct name
 } catch (error) {
   console.error('Failed to expose preload API:', error);
 }

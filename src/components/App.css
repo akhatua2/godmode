@@ -37,7 +37,7 @@
 }
 
 /* Specific styles for the settings button */
-.settings-toggle-button {
+.settings-toggle-button, .new-chat-button {
   /* background: rgba(255, 255, 255, 0.1); /* Subtle background */
   background: transparent; /* Remove background */
   color: #ccc; /* Icon color */
@@ -56,13 +56,13 @@
   transition: background-color 0.2s ease; /* Smooth transition on hover */
 }
 
-.settings-toggle-button svg {
+.settings-toggle-button svg, .new-chat-button svg {
   width: 1em; /* Make SVG size relative to button font size (if set) or use fixed */
   height: 1em;
   display: block; /* Prevent extra space */
 }
 
-.settings-toggle-button:hover {
+.settings-toggle-button:hover, .new-chat-button:hover {
   background-color: rgba(255, 255, 255, 0.2); /* Background color on hover */
   border-color: rgba(255, 255, 255, 0.3); /* Border color on hover */
 }

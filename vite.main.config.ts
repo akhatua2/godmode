@@ -26,6 +26,8 @@ export default defineConfig({
     rollupOptions: {
       // Let Vite bundle 'ws'
       // external: ['ws'],
+      // Specify the entry point to the new main index file
+      input: resolve(__dirname, 'src/main/index.ts'),
     },
     // Ensure we target a Node.js environment for the main process build
     // (This might be handled by the Electron Forge plugin, but explicit is safer)

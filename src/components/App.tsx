@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import './App.css'; // We'll create this CSS file next
+import './App.css'; // Import CSS
 import { ChatInput } from './ChatInput'; // Import the new component
 import { ChatMessage } from './ChatMessage'; // Import the new message component
-import { Settings } from './Settings'; // ADDED: Import Settings component
+import { Settings } from './Settings'; // Import Settings component
+import { Toast } from './Toast'; // Add this import
 
 // Import the type definition for cleaner code
-import type { Message, ChatMessageProps, ToolCall, AgentStepUpdateData, CostUpdatePayload } from './types';
+import type { Message, ChatMessageProps, ToolCall, AgentStepUpdateData, CostUpdatePayload } from '../types';
 
 // Interface for the pending question state
 interface PendingQuestion {
@@ -59,6 +60,9 @@ function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false); // ADDED
   const [activeApiKeys, setActiveApiKeys] = useState<{ [provider: string]: string }>({}); // ADDED Store active keys
   // --- End Settings State --- // ADDED
+
+  // Add toast state
+  const [toast, setToast] = useState<{message: string; visible: boolean} | null>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -280,6 +284,11 @@ function App() {
     };
     // --- End Backend Status Listener --- // ADDED
 
+    // Add new handler for toast notifications from main process
+    const handleToastNotification = (event: Electron.IpcRendererEvent, { text }: { text: string }) => {
+      setToast({ message: text, visible: true });
+    };
+
     // Set up the listeners using the exposed API
     // Feature removed: CommandOrControl+I paste
     // const handleGlobalPaste = (event: Electron.IpcRendererEvent, content: string) => {
@@ -300,6 +309,7 @@ function App() {
     window.electronAPI.onAgentQuestion(handleAgentQuestion); // agent_question
     window.electronAPI.onAgentStepUpdate(handleAgentStepUpdate); // agent_step_update
     window.electronAPI.onCostUpdate(handleCostUpdate);
+    window.electronAPI.onToastNotification(handleToastNotification); // Add this new listener
     // Feature removed: CommandOrControl+I paste
     // window.electronAPI.onPasteFromGlobalShortcut(handleGlobalPaste); // Add listener
 
@@ -314,7 +324,7 @@ function App() {
 
     // Cleanup function to remove the listeners when the component unmounts
     return () => {
-      // Assume these cleanup functions will be exposed via preload
+      // Use the correct exposed API name: cleanup
       window.cleanup?.removeMessageListener();
       window.cleanup?.removeStreamStartListener();
       window.cleanup?.removeStreamChunkListener();
@@ -339,6 +349,9 @@ function App() {
 
       // Add cleanup for the new listener
       window.cleanup?.removeBackendStatusMessageListener(); // ADDED: Cleanup the new listener
+      
+      // Add cleanup for toast notification listener
+      window.cleanup?.removeToastNotificationListener();
     };
   }, []); // Empty dependency array means this runs once on mount
 
@@ -371,12 +384,35 @@ function App() {
   };
   // --- End Clear/Remove Context Function ---
 
+  // --- Handler for starting a new chat ---
+  const handleStartNewChat = useCallback(() => {
+    console.log('[App] Starting new chat session');
+    // Clear UI state
+    setMessages([]);
+    setInputValue('');
+    setSelectedTextContexts([]);
+    setRespondedToolCallIds(new Set());
+    // Send message to main process to create new chat session
+    window.electronAPI.startNewChat();
+  }, []);
+  // --- End new chat handler ---
+
   return (
     <div className="app-container">
       {/* Title bar - ONLY this outer div is draggable */}
       <div className="title-bar">
         {/* Container for buttons/controls - NOT draggable */}
         <div className="title-bar-controls">
+          <button
+            onClick={handleStartNewChat}
+            className="new-chat-button"
+            title="New Chat"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+          </button>
           <button
             onClick={() => setIsSettingsOpen(true)}
             className="settings-toggle-button"
@@ -466,6 +502,14 @@ function App() {
         )}
       </>
       {/* --- End Conditional Rendering --- */}
+
+      {/* Add Toast component */}
+      {toast && toast.visible && (
+        <Toast 
+          message={toast.message} 
+          onClose={() => setToast(null)} 
+        />
+      )}
     </div>
   );
 }

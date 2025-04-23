@@ -3,7 +3,7 @@
   "productName": "laptop_llm",
   "version": "1.0.0",
   "description": "My Electron application description",
-  "main": ".vite/build/main.js",
+  "main": ".vite/build/index.js",
   "scripts": {
     "start": "WS_NO_BUFFER_UTIL=true WS_NO_UTF8_VALIDATE=true electron-forge start",
     "package": "electron-forge package",

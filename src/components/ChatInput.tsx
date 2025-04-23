@@ -135,7 +135,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     // Cleanup function to remove the listener
     return () => {
       console.log('[ChatInput] Removing trigger-send-message listener');
-      window.cleanup.removeTriggerSendMessageListener();
+      window.cleanup?.removeTriggerSendMessageListener();
     };
   }, [inputValue, includeScreenshot, isProcessing]); // Add dependencies of handleSendMessage
   // --- End Listener for CMD+K Shortcut ---

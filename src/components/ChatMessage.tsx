@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import type { ToolCall, AgentStepUpdateData } from './types'; // Import ToolCall type and AgentStepUpdateData
-import './ChatMessage.css'; // <-- Import the new CSS file
+import type { ToolCall, AgentStepUpdateData } from '../types'; // Import ToolCall type and AgentStepUpdateData from types directory
+import './ChatMessage.css'; // Import the CSS file
 
 // --- Helper Function to Extract Minimal Status ---
 function extractMinimalStatus(thoughts: string | undefined): string | null {
