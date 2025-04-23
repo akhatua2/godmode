@@ -35,7 +35,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     "ollama/llama3.2": "llama3.2",
     "ollama/qwen2.5:7b": "qwen2.5",
     "gemini/gemini-2.0-flash": "gemini2.0",
-    "anthropic/claude-3-5-sonnet-20240620": "claude3.5"
+    "anthropic/claude-3-5-sonnet-20240620": "claude3.5",
+    "azure/gpt-4o-mini": "a4o-mini",
   };
   const availableModels = Object.keys(modelMap);
   const [selectedModel, setSelectedModel] = useState<string>(availableModels[0]); // Default to first model
