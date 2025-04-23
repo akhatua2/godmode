@@ -134,12 +134,20 @@ async def run_agent_step_and_send(
                                     for result in results:
                                         tool_call_id = result.get("tool_call_id")
                                         if tool_call_id in pending_tool_calls:
+                                            content = str(result.get("content", ""))
                                             agent.add_message_to_memory(
                                                 role="tool",
-                                                content=str(result.get("content", "")),
+                                                content=content,
                                                 tool_call_id=tool_call_id
                                             )
                                             del pending_tool_calls[tool_call_id]
+                                            # If this was a denial, trigger next agent step
+                                            if "User denied execution" in content:
+                                                print("[WebSocket] Tool execution denied, triggering next agent step")
+                                                agent_finished, cost_from_nested = await run_agent_step_and_send(
+                                                    agent, websocket, pending_questions, api_keys=api_keys
+                                                )
+                                                return agent_finished, final_cost_from_agent if final_cost_from_agent is not None else cost_from_nested
                             except Exception as e:
                                 print(f"Error processing tool response: {e}")
                                 break
