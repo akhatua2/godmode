@@ -43,7 +43,7 @@ npm install
 npm start
 
 # Build the app for production
-npm run package
+npm run make
 ```
 
 ## Project Structure
