@@ -201,9 +201,9 @@ export const ChatInput: React.FC<ChatInputProps> = ({
               className={`toggle-screenshot-button ${includeScreenshot ? 'active' : ''}`}
               title={includeScreenshot ? 'Remove screenshot context' : 'Add screenshot context'}
             >
-              {/* Styled '@' symbol */}
-              <span>@</span> 
-              Add screenshot
+              {/* Styled symbol that changes based on state */}
+              <span>{includeScreenshot ? '✓' : '@'}</span> 
+              {includeScreenshot ? 'Screenshot added' : 'Add screenshot'}
             </button>
 
             {/* Render Selected Text Context Block (if it exists) */}
