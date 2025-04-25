@@ -19,6 +19,6 @@ PLANNER_MODEL = "o3-mini"
 CHROME_PATH = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'  # macOS path
 
 # WebSocket Configuration
-WS_HOST = "127.0.0.1"
+WS_HOST = "localhost"
 WS_PORT = 8000
 WS_ENDPOINT = "/ws" 
