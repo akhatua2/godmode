@@ -5,7 +5,7 @@ import { executeTool } from '../tools/tool-executor';
 import type { ToolCall, CostUpdatePayload } from '../types';
 
 // Backend WebSocket connection settings
-const BACKEND_BASE_URL = 'ws://127.0.0.1:8000/ws';
+const BACKEND_BASE_URL = 'ws://localhost:8000/ws';
 
 // WebSocket instance and streaming flag
 let ws: WebSocket | null = null;
