@@ -13,7 +13,7 @@ const config: ForgeConfig = {
     asar: {
       unpackDir: '{node_modules/ws/**}'
     },
-    icon: 'nohup'
+    icon: 'podrick'
   },
   rebuildConfig: {},
   makers: [new MakerSquirrel({}), new MakerZIP({}, ['darwin']), new MakerRpm({}), new MakerDeb({})],

@@ -1,6 +1,5 @@
-# Godmode
 
-<img src="nohup.png" alt="Godmode Logo" width="200"/>
+<img src="podrick_banner.png" alt="Podrick Logo"/>
 
 Your AI-powered desktop companion that brings the power of large language models to your fingertips. Built with Electron, React, and TypeScript for a seamless native experience.
 
