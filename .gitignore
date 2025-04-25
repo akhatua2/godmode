@@ -114,3 +114,7 @@ backend/data/memory_store/chroma.sqlite3
 backend/data/memory_store/aec76266-2732-4f48-803b-f17507558f59/length.bin
 backend/data/memory_store/chroma.sqlite3
 backend/data/memory_store/aec76266-2732-4f48-803b-f17507558f59/length.bin
+backend/nohup.db
+
+# Database files
+*.db

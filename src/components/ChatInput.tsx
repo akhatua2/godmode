@@ -191,43 +191,49 @@ export const ChatInput: React.FC<ChatInputProps> = ({
       <div className="bg-white border border-gray-200 rounded-lg overflow-hidden p-2 chat-input-container">
         {/* --- NEW: Wrapper for top row elements --- */}
         <div className="chat-input-top-row">
-          {/* Existing Add Context/Screenshot Button */}
-          <button
-            type="button" // Prevent form submission
-            onClick={() => setIncludeScreenshot(!includeScreenshot)}
-            disabled={isProcessing}
-            className={`toggle-screenshot-button ${includeScreenshot ? 'active' : ''}`}
-            title={includeScreenshot ? 'Remove screenshot context' : 'Add screenshot context'}
-          >
-            {/* Styled '@' symbol */}
-            <span>@</span> 
-            Add screenshot
-          </button>
+          {/* Left-aligned container for screenshot and context */}
+          <div className="chat-input-left-group">
+            {/* Existing Add Context/Screenshot Button */}
+            <button
+              type="button" // Prevent form submission
+              onClick={() => setIncludeScreenshot(!includeScreenshot)}
+              disabled={isProcessing}
+              className={`toggle-screenshot-button ${includeScreenshot ? 'active' : ''}`}
+              title={includeScreenshot ? 'Remove screenshot context' : 'Add screenshot context'}
+            >
+              {/* Styled '@' symbol */}
+              <span>@</span> 
+              Add screenshot
+            </button>
 
-          {/* Render Selected Text Context Block (if it exists) */}
-          {contextTexts.map((text, index) => (
-            <div key={index} className="context-display-block">
-              <span className="context-text-preview">{text.substring(0, 10)}{text.length > 10 ? '...' : ''}</span>
-              <button 
-                type="button" 
-                onClick={() => onRemoveContext(index)} 
-                className="clear-context-button"
-                title="Clear context"
+            {/* Render Selected Text Context Block (if it exists) */}
+            {contextTexts.map((text, index) => (
+              <div key={index} className="context-display-block">
+                <span className="context-text-preview">{text.substring(0, 10)}{text.length > 10 ? '...' : ''}</span>
+                <button 
+                  type="button" 
+                  onClick={() => onRemoveContext(index)} 
+                  className="clear-context-button"
+                  title="Clear context"
+                >
+                  &times; {/* Use HTML entity for 'x' */}
+                </button>
+              </div>
+            ))}
+          </div>
+
+          {/* Right-aligned stop button */}
+          {isProcessing && (
+            <div className="chat-input-right-group">
+              <button
+                type="button"
+                onClick={handleStopProcessing}
+                className="stop-processing-button"
+                title="Stop processing"
               >
-                &times; {/* Use HTML entity for 'x' */}
+                Stop
               </button>
             </div>
-          ))}
-
-          {isProcessing && (
-            <button
-              type="button"
-              onClick={handleStopProcessing}
-              className="stop-processing-button"
-              title="Stop processing"
-            >
-              Stop
-            </button>
           )}
         </div>
         {/* --- End Wrapper --- */}

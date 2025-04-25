@@ -15,6 +15,12 @@ interface PendingQuestion {
   requestId: string;
 }
 
+// Interface for the ChatInfo
+interface ChatInfo {
+  title: string;
+  last_active_at: string;
+}
+
 // --- Define providers you want inputs for ---
 // const API_KEY_PROVIDERS = ['openai', 'anthropic', 'groq']; // REMOVED from here
 
@@ -67,7 +73,7 @@ function App() {
 
 
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  const [chatTitles, setChatTitles] = useState<string[]>([]);
+  const [chatTitles, setChatTitles] = useState<ChatInfo[]>([]);
   const historyButtonRef = useRef<HTMLButtonElement>(null);
 
 
@@ -82,12 +88,13 @@ function App() {
       const data = await response.json();
       console.log('[App] Received chat data:', data);
       
-      // Extract titles from the chat info objects
-      const titles = data.chats.map((chat: { title: string }) => 
-        chat.title || 'Untitled Chat'
-      );
-      console.log('[App] Extracted chat titles:', titles);
-      setChatTitles(titles);
+      // Use the chat info objects directly
+      const chatInfos = data.chats.map((chat: { title: string; last_active_at: string }) => ({
+        title: chat.title || 'Untitled Chat',
+        last_active_at: chat.last_active_at
+      }));
+      console.log('[App] Extracted chat infos:', chatInfos);
+      setChatTitles(chatInfos);
     } catch (error) {
       console.error('[App] Failed to fetch chat titles:', error);
       setChatTitles([]); // Set empty array on error

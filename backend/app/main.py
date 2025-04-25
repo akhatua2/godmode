@@ -450,7 +450,7 @@ async def list_chats():
         async with aiosqlite.connect(DATABASE_URL) as db:
             db.row_factory = aiosqlite.Row # Access columns by name
             async with db.execute(
-                "SELECT title, chat_id, last_active_at FROM chats ORDER BY last_active_at DESC LIMIT 10"
+                "SELECT title, chat_id, last_active_at FROM chats ORDER BY last_active_at DESC LIMIT 25"
             ) as cursor:
                 async for row in cursor:
                     title = row['title'] if row['title'] else "Untitled Chat"
