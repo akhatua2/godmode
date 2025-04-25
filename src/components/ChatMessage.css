@@ -90,4 +90,30 @@
 
 .agent-question-submit-button:hover {
     background-color: #6aaf6a;
-} 
+}
+
+.message-content {
+  position: relative;
+  width: 100%;
+}
+
+.message-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.copy-button {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  color: #888;
+  transition: color 0.5s ease-out;
+  transform: scale(0.7);
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.copy-button:hover {
+  color: #aaa;
+}

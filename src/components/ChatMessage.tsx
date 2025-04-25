@@ -18,6 +18,44 @@ function extractMinimalStatus(thoughts: string | undefined): string | null {
 
     return memoryContent.trim() || null; // Return trimmed content or null if empty
 }
+
+// Add this helper function near the other helper functions
+const copyToClipboard = async (text: string) => {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (err) {
+    console.error('Failed to copy text: ', err);
+    return false;
+  }
+};
+
+const CheckIcon = () => (
+  <svg 
+    width="16" 
+    height="16" 
+    viewBox="0 0 16 16" 
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path d="M3.5 8.5L6.5 11.5L12.5 4.5" stroke="currentColor" strokeWidth="1.2"/>
+  </svg>
+);
+
+const CopyIcon = ({ isCopied }: { isCopied: boolean }) => (
+  isCopied ? <CheckIcon /> : (
+    <svg 
+      width="16" 
+      height="16" 
+      viewBox="0 0 16 16" 
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path d="M4.5 2.5H12.5V10.5H4.5V2.5Z" stroke="currentColor" strokeWidth="1.2"/>
+      <path d="M2.5 5.5V13.5H10.5V10.5" stroke="currentColor" strokeWidth="1.2"/>
+    </svg>
+  )
+);
 // --- End Helper Function ---
 
 interface ChatMessageProps {
@@ -60,6 +98,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
           
   // State to track if the image is expanded
   const [isExpanded, setIsExpanded] = useState(false);
+  const [showCopyFeedback, setShowCopyFeedback] = useState(false);
 
   // Function to toggle expansion
   const toggleExpansion = () => {
@@ -72,6 +111,15 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
           const toolCallId = toolCalls[0].id;
           onToolResponse(toolCallId, decision);
       }
+  };
+
+  // Add copy handler
+  const handleCopy = async () => {
+    const success = await copyToClipboard(text);
+    if (success) {
+      setShowCopyFeedback(true);
+      setTimeout(() => setShowCopyFeedback(false), 2000);
+    }
   };
 
   return (
@@ -176,10 +224,21 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
                    <pre className="agent-status-text"><code>{status}</code></pre>
                ) : null; // Render nothing if status can't be extracted
            })()
-           // --- End Render Minimal Status --- 
         ) : (
-          // If it's a bot message (and not an image), render using ReactMarkdown
-          <ReactMarkdown>{text}</ReactMarkdown>
+          <div className="message-content">
+            <ReactMarkdown>{text}</ReactMarkdown>
+            {!isAgentUpdate && !isToolRequest && !isCommandOutput && (
+              <div className="message-footer">
+                <button 
+                  className="copy-button"
+                  onClick={handleCopy}
+                  title="Copy message"
+                >
+                  <CopyIcon isCopied={showCopyFeedback} />
+                </button>
+              </div>
+            )}
+          </div>
         )
       }
     </div>
