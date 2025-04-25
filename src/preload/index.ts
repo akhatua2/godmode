@@ -339,3 +339,5 @@ try {
 } catch (error) {
   console.error('Failed to expose preload API:', error);
 }
+
+console.log('[Preload] Exposed electronAPI to renderer process');

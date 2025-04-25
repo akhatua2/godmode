@@ -16,11 +16,8 @@ export default defineConfig({
     // exclude: ['ws'],
   },
   ssr: {
-    // Let Vite handle 'ws'
-    // external: ['ws']
     // Explicitly tell Vite to BUNDLE these for the main process (SSR-like build)
-    // Keep bundling squirrel/debug/ms, but let ws be external again
-    noExternal: ['electron-squirrel-startup', 'debug', 'ms']
+    noExternal: ['electron-squirrel-startup', 'debug', 'ms', 'ws', 'uuid']
   },
   build: {
     rollupOptions: {
